@@ -43,16 +43,11 @@ long recursive_children(struct task_struct* process, pid_t *list, size_t limit, 
 	list_for_each_entry(pos, &process->children, sibling) {
 		next_process = list_entry(&pos->children, struct task_struct, children);
 		ret = recursive_children(next_process, list, limit, n_children);
-		printk("SKDEBUG before %zu", *n_children);
-		printk("SKDEBUG before limit %zu\n", limit);
 		if(*n_children <= limit) {
-			printk("SKDEBUG TRUE\n");
 			list[(*n_children)++] = pos->pid;
 		} else {
-			printk("SKDEBUG FALSE\n");
 			(*n_children)++;
 		}
-		printk("SKDEBUG after %zu", *n_children);
 	}
 
 	return ret;
