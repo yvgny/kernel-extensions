@@ -1,5 +1,5 @@
-#include <linux/linkage.h>
 #include <linux/kernel.h>
+#include <linux/linkage.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 

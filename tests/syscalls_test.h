@@ -16,7 +16,9 @@ static __inline__ long get_unique_id(int *uuid)
 	return syscall(__NR_get_unique_id, uuid) ? errno : 0;
 }
 
-static __inline__ long get_child_pids(pid_t *list, size_t limit, size_t *num_children)
+static __inline__ long get_child_pids(pid_t *list, size_t limit,
+				      size_t *num_children)
 {
-	return syscall(__NR_get_child_pids, list, limit, num_children) ? errno : 0;
+	return syscall(__NR_get_child_pids, list, limit, num_children) ? errno
+								       : 0;
 }
