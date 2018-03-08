@@ -24,10 +24,12 @@ void run_processes_with_limit(int, long, size_t);
 
 void get_child_pids_tests()
 {
+    printf("\033[0;31m======== Get child PIDs syscall test suite : ========\n\033[0m");
 	test_too_small_array();
 	test_null_limit();
     test_children_count_number();
 	test_incorrect_memory_address();
+    printf("\n\n");
 }
 
 void test_too_small_array()

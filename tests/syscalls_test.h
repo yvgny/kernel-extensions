@@ -1,3 +1,6 @@
+#ifndef syscalls_test_h
+#define syscalls_test_h
+
 #include <errno.h>
 #define _GNU_SOURCE
 #include <unistd.h>
@@ -22,3 +25,4 @@ static __inline__ long get_child_pids(pid_t *list, size_t limit,
 	return syscall(__NR_get_child_pids, list, limit, num_children) ? errno
 								       : 0;
 }
+#endif

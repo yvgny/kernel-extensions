@@ -17,12 +17,14 @@ int *check;
 
 void get_unique_id_tests()
 {
+    printf("\033[0;31m======== Get unique ID test suite : ========\033[0m\n");
     test_parrallel_thread();
+    printf("\n\n");
 }
 
 void test_parrallel_thread()
 {
-    printf("Running %d thread of %d iterations should output %d different IDs :", NUM_THREAD, NUM_ITER, NUM_ID);
+    printf("Running %d thread of %d iterations should output %d different IDs : ", NUM_THREAD, NUM_ITER, NUM_ID);
     
     pthread_t tid[NUM_THREAD];
     check = calloc(NUM_ID, sizeof(int));
@@ -37,14 +39,14 @@ void test_parrallel_thread()
         int i;
         for (i = 0; i < NUM_ID; i++) {
             if (check[i] != 1) {
-                printf("Failed : ID number %d wasn't generated\n", i);
+                printf("failed : ID number %d wasn't generated\n", i);
                 free(check);
                 return 0;
             }
         }
     }
     
-    printf("Success !\n");
+    printf("passed !\n");
     free(check);
     return 0;
 }
@@ -56,7 +58,7 @@ void *fill_check(void *arg)
     for (int i = 0; i < NUM_ITER; i++) {
         res = get_unique_id(&number);
         if(res != 0) {
-            printf("Failed ! Return value should be 0 but was %ld.\n", res);
+            printf("failed ! Return value should be 0 but was %ld.\n", res);
         } else {
             check[number % NUM_ID] = 1;
         }
