@@ -8,9 +8,9 @@
 #include <sys/wait.h>
 #include "get_child_pids_test.h"
 
-#define MAX_LIMIT 3
+#define MAX_LIMIT ((size_t) 3)
 #define SUCCESS 0
-#define BAD_ADDRESS 47424742
+#define BAD_ADDRESS ((void*) 47424742)
 
 void test_too_small_array();
 
