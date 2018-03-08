@@ -10,7 +10,7 @@ sudo update-initramfs -k 4.15.4 -u
 while true; do
     read -p "Do you want to reboot now ? [y/n] " yn
         case $yn in
-            [Yy]* ) echo "Rebooting..";break;sudo reboot;;
+            [Yy]* ) echo "Rebooting..";sudo reboot;break;;
             [Nn]* ) echo "Kernel will be reloaded at next reboot.";break;;
             * ) echo "Please answer yes or no.";;
         esac
