@@ -21,6 +21,9 @@ asmlinkage long sys_get_child_pids(pid_t *list, size_t limit,
 	read_unlock(&tasklist_lock);
 
 	error = put_user(n_children, num_children);
+	if(error) {
+		return error;
+	}
 	{
 		int i;
 		for (i = 0; i < limit; i++) {
@@ -33,7 +36,7 @@ asmlinkage long sys_get_child_pids(pid_t *list, size_t limit,
 		return -ENOBUFS;
 	}
 
-	return ret | error;
+	return ret;
 }
 
 long recursive_children(struct task_struct *process, pid_t *list, size_t limit,
