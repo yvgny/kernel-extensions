@@ -24,12 +24,12 @@ void run_processes_with_limit(int, long, size_t);
 
 void get_child_pids_tests()
 {
-    printf("\033[0;31m======== Get child PIDs syscall test suite : ========\n\033[0m");
+	printf("\033[0;31m======== Get child PIDs syscall test suite : ========\n\033[0m");
 	test_too_small_array();
 	test_null_limit();
-    test_children_count_number();
+	test_children_count_number();
 	test_incorrect_memory_address();
-    printf("\n\n");
+	printf("\n\n");
 }
 
 void test_too_small_array()
@@ -56,46 +56,46 @@ void test_incorrect_memory_address()
 	size_t *num_children;
 	num_children = malloc(sizeof(size_t));
 	pid_t ids[MAX_LIMIT];
-    
-    printf("Giving a null address for ids when limit != should output an error: ");
-    res = get_child_pids(NULL, MAX_LIMIT, num_children);
-    if (res != EFAULT) {
-        printf("failed: return value is %ld.\n", res);
-    } else {
-        printf("passed !\n");
-    }
-    
-    printf("Giving a null address for ids when limit == 0 should be accepted: ");
-    res = get_child_pids(NULL, 0, num_children);
-    if (res != 0) {
-        printf("failed: return value is %ld.\n", res);
-    } else {
-        printf("passed !\n");
-    }
-    
-    printf("Giving a bad address for ids should output an error: ");
-    res = get_child_pids(BAD_ADDRESS, MAX_LIMIT, num_children);
-    if (res != EFAULT) {
-        printf("failed: return value is %ld.\n", res);
-    } else {
-        printf("passed !\n");
-    }
-    
-    printf("Giving a bad address for num_children should output an error: ");
-    res = get_child_pids(ids, MAX_LIMIT, BAD_ADDRESS);
-    if (res != EFAULT) {
-        printf("failed: return value is %ld.\n", res);
-    } else {
-        printf("passed !\n");
-    }
-    
-    printf("Giving a bad address for num_children should output an error: ");
-    res = get_child_pids(ids, MAX_LIMIT, BAD_ADDRESS);
-    if (res != EFAULT) {
-        printf("failed: return value is %ld.\n", res);
-    } else {
-        printf("passed !\n");
-    }
+
+	printf("Giving a null address for ids when limit != should output an error: ");
+	res = get_child_pids(NULL, MAX_LIMIT, num_children);
+	if (res != EFAULT) {
+		printf("failed: return value is %ld.\n", res);
+	} else {
+		printf("passed !\n");
+	}
+
+	printf("Giving a null address for ids when limit == 0 should be accepted: ");
+	res = get_child_pids(NULL, 0, num_children);
+	if (res != 0) {
+		printf("failed: return value is %ld.\n", res);
+	} else {
+		printf("passed !\n");
+	}
+
+	printf("Giving a bad address for ids should output an error: ");
+	res = get_child_pids(BAD_ADDRESS, MAX_LIMIT, num_children);
+	if (res != EFAULT) {
+		printf("failed: return value is %ld.\n", res);
+	} else {
+		printf("passed !\n");
+	}
+
+	printf("Giving a bad address for num_children should output an error: ");
+	res = get_child_pids(ids, MAX_LIMIT, BAD_ADDRESS);
+	if (res != EFAULT) {
+		printf("failed: return value is %ld.\n", res);
+	} else {
+		printf("passed !\n");
+	}
+
+	printf("Giving a bad address for num_children should output an error: ");
+	res = get_child_pids(ids, MAX_LIMIT, BAD_ADDRESS);
+	if (res != EFAULT) {
+		printf("failed: return value is %ld.\n", res);
+	} else {
+		printf("passed !\n");
+	}
 
 	free(num_children);
 }
@@ -113,7 +113,7 @@ void run_processes_with_limit(int limit, long expected_return_value,
 				_Exit(0);
 			}
 		} else {
-            sleep(1);
+			sleep(1);
 			long res = -1;
 			pid_t ids[limit];
 			size_t *num_children;
@@ -129,12 +129,12 @@ void run_processes_with_limit(int limit, long expected_return_value,
 				printf("passed !\n");
 			}
 			free(num_children);
-            {
-                int i;
-                for (i = 0; i < MAX_LIMIT; i++) {
-                    wait(NULL);
-                }
-            }
+			{
+				int i;
+				for (i = 0; i < MAX_LIMIT; i++) {
+					wait(NULL);
+				}
+			}
 		}
 	} else {
 		sleep(2);
