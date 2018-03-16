@@ -8,6 +8,9 @@
 #define UART16550_COM1_SELECTED         0x01
 #define UART16550_COM2_SELECTED         0x02
 
+#define MINOR_COM1                      0
+#define MINOR_COM2                      1
+
 #define MAX_NUMBER_DEVICES              2
 
 #define UART16550_IOCTL_SET_LINE        1
