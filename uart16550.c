@@ -20,6 +20,7 @@ static struct class *uart16550_class = NULL;
  * TODO: Populate major number from module options (when it is given).
  */
 static int major = 42;
+static int behavior = 0x03;
 
 static ssize_t uart16550_write(struct file *file, const char __user *user_buffer,
         size_t size, loff_t *offset)
@@ -88,6 +89,12 @@ static int uart16550_init(void)
          *      module parameters.
          * TODO: Check return values of functions used. Fail gracefully.
          */
+
+        module_param(major, int, 0);
+        module_param(behavior, int, 0);
+
+        have_com1 = behavior == OPTION_COM1 || behavior == OPTION_BOTH;
+        have_com2 = behavior == OPTION_COM2 || behavior == OPTION_BOTH;
 
         /*
          * Setup a sysfs class & device to make /dev/com1 & /dev/com2 appear.
