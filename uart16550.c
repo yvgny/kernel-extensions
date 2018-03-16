@@ -22,6 +22,9 @@ static struct class *uart16550_class = NULL;
 static int major = 42;
 static int behavior = 0x03;
 
+module_param(major, int, 0);
+module_param(behavior, int, 0);
+
 static ssize_t uart16550_write(struct file *file, const char __user *user_buffer,
         size_t size, loff_t *offset)
 {
@@ -90,9 +93,6 @@ static int uart16550_init(void)
          * TODO: Check return values of functions used. Fail gracefully.
          */
 
-        module_param(major, int, 0);
-        module_param(behavior, int, 0);
-
         have_com1 = behavior == OPTION_COM1 || behavior == OPTION_BOTH;
         have_com2 = behavior == OPTION_COM2 || behavior == OPTION_BOTH;
 
@@ -124,6 +124,10 @@ static void uart16550_cleanup(void)
          * TODO: have_com1 & have_com2 need to be set according to the
          *      module parameters.
          */
+
+        have_com1 = behavior == OPTION_COM1 || behavior == OPTION_BOTH;
+        have_com2 = behavior == OPTION_COM2 || behavior == OPTION_BOTH;
+
         if (have_com1) {
                 /* Reset the hardware device for COM1 */
                 uart16550_hw_cleanup_device(COM1_BASEPORT);
