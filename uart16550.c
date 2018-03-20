@@ -22,13 +22,28 @@ MODULE_LICENSE("GPL");
 #define MODULE_NAME "uart16550"
 #define EXIT_ON_ERROR(error)                                                   \
 	if (error)                                                             \
-		return error
+	return error
+
+int uart16550_open(struct inode *, struct file *);
+ssize_t uart16550_read(struct file *, char __user *, size_t , loff_t *);
+int uart16550_release(struct inode *, struct file *);
+long uart16550_unlocked_ioctl(struct file *, unsigned int , unsigned long);
+ssize_t uart16550_write(struct file *,
+			       const char __user *, size_t ,
+			       loff_t *);
 
 struct uart16550_dev {
 	struct cdev cdev;
 };
 static struct class *uart16550_class = NULL;
-static const struct file_operations uart16550_fops = {.owner = THIS_MODULE};
+static const struct file_operations uart16550_fops = {
+	.owner = THIS_MODULE,
+	.open = uart16550_open,
+	.read = uart16550_read,
+	.write = uart16550_write,
+	.release = uart16550_release,
+	.unlocked_ioctl = uart16550_unlocked_ioctl,
+};
 
 
 /*
@@ -41,9 +56,24 @@ static struct uart16550_dev com1, com2;
 module_param(major, int, 0);
 module_param(behavior, int, 0);
 
-static ssize_t uart16550_write(struct file *file,
-			       const char __user *user_buffer, size_t size,
-			       loff_t *offset)
+int uart16550_open(struct inode *inode, struct file *filp)
+{
+	struct uart16550_dev *uart16550_dev;
+	uart16550_dev = container_of(inode->i_cdev, struct uart16550_dev, cdev);
+
+	filp->private_data = uart16550_dev;
+
+	return 0;
+}
+
+ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
+{
+	return 0;
+}
+
+ssize_t uart16550_write(struct file *filp,
+			       const char __user *buff, size_t count,
+			       loff_t *offp)
 {
 	int bytes_copied;
 	u32 device_port;
@@ -58,6 +88,17 @@ static ssize_t uart16550_write(struct file *file,
 	uart16550_hw_force_interrupt_reemit(device_port);
 
 	return bytes_copied;
+}
+
+int uart16550_release(struct inode *inode, struct file *filp)
+{
+
+	return 0;
+}
+
+long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	return 0;
 }
 
 irqreturn_t interrupt_handler(int irq_no, void *data)
@@ -139,9 +180,9 @@ static int uart16550_init(void)
 			return PTR_ERR(device);
 		}
 
-                cdev_init(&com1.cdev, &uart16550_fops);
-                err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
-                EXIT_ON_ERROR(err);
+		cdev_init(&com1.cdev, &uart16550_fops);
+		err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
+		EXIT_ON_ERROR(err);
 	}
 	if (have_com2) {
 		/* Setup the hardware device for COM2 */
@@ -156,9 +197,9 @@ static int uart16550_init(void)
 			return PTR_ERR(device);
 		}
 
-                cdev_init(&com2.cdev, &uart16550_fops);
-                err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
-                EXIT_ON_ERROR(err);
+		cdev_init(&com2.cdev, &uart16550_fops);
+		err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
+		EXIT_ON_ERROR(err);
 	}
 
 	return 0;
@@ -186,7 +227,7 @@ static void uart16550_cleanup(void)
 		/* Remove the sysfs info for /dev/com1 */
 		device_destroy(uart16550_class, MKDEV(major, 0));
 
-                cdev_del(&com1.cdev);
+		cdev_del(&com1.cdev);
 	}
 	if (have_com2) {
 		/* Reset the hardware device for COM2 */
@@ -194,7 +235,7 @@ static void uart16550_cleanup(void)
 		/* Remove the sysfs info for /dev/com2 */
 		device_destroy(uart16550_class, MKDEV(major, 1));
 
-                cdev_del(&com2.cdev);
+		cdev_del(&com2.cdev);
 	}
 
 	/*
