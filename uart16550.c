@@ -4,6 +4,9 @@
 #include <linux/kdev_t.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
+#include <linux/kfifo.h>
+#include <linux/uaccess.h>
+#include <linux/wait.h>
 #include "uart16550.h"
 #include "uart16550_hw.h"
 
@@ -34,11 +37,15 @@ ssize_t uart16550_write(struct file *,
 
 struct uart16550_dev {
 	struct cdev cdev;
+	DECLARE_KFIFO(outgoing, char, FIFO_SIZE);
+	DECLARE_KFIFO(incoming, char, FIFO_SIZE);
+	wait_queue_head_t wq_head;
+	u32 device_port;
 };
 static struct class *uart16550_class = NULL;
 static const struct file_operations uart16550_fops = {
 	.owner = THIS_MODULE,
-	.open = uart16550_open,
+	.open = &uart16550_open,
 	.read = uart16550_read,
 	.write = uart16550_write,
 	.release = uart16550_release,
@@ -68,7 +75,20 @@ int uart16550_open(struct inode *inode, struct file *filp)
 
 ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
 {
-	return 0;
+	printk("SKDEBUG read with filp =  %p", filp);
+	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
+	printk("SKDEBUG begin sleeping read, condition is %d",!kfifo_is_empty(&uart16550_dev->outgoing) );
+	wait_event_interruptible(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
+	printk("SKDEBUG finish sleeping read");
+	int chars_copied = 0;
+	char kernel_buff[count];
+	int to_copy_chars = kfifo_out(&uart16550_dev->outgoing, kernel_buff, count);
+	int uncopied_chars = copy_to_user(buff, &kernel_buff, to_copy_chars);
+	int copied_chars = to_copy_chars - uncopied_chars;
+	*offp += copied_chars;
+	printk("SKDEBUG copied %d bytes for read", copied_chars);
+
+	return copied_chars;
 }
 
 ssize_t uart16550_write(struct file *filp,
@@ -76,7 +96,20 @@ ssize_t uart16550_write(struct file *filp,
 			       loff_t *offp)
 {
 	int bytes_copied;
-	u32 device_port;
+	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
+	printk("SKDEBUG write with cdev =  %p", uart16550_dev);
+	printk("SKDEBUG begin sleeping write");
+	wait_event(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
+	printk("SKDEBUG finish sleeping write");
+	char kernel_buffer[count];
+	printk("SKDEBUG copy from user with count %d", count);
+	int uncopied_chars = copy_from_user(&kernel_buffer, buff, count);
+	printk("SKDEBUG finish from user with %d uncopied bytes and text : %s", uncopied_chars, kernel_buffer);
+	bytes_copied = count - uncopied_chars;
+	kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
+	*offp += bytes_copied;
+	printk("SKDEBUG copied %d bytes for write", bytes_copied);
+
 	/*
 	 * TODO: Write the code that takes the data provided by the
 	 *      user from userspace and stores it in the kernel
@@ -85,7 +118,9 @@ ssize_t uart16550_write(struct file *filp,
 	 *      that fit in the outgoing buffer.
 	 */
 
-	uart16550_hw_force_interrupt_reemit(device_port);
+	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
+
+	printk("SKDEBUG returning ..., outgoing is not empty :%d", !kfifo_is_empty(&uart16550_dev->outgoing));
 
 	return bytes_copied;
 }
@@ -98,6 +133,14 @@ int uart16550_release(struct inode *inode, struct file *filp)
 
 long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
+	/*if (cmd != UART16550_IOCTL_SET_LINE) {
+		return 0;
+	}
+	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
+	struct uart16550_line_info parameters = *((struct uart16550_line_info*)&arg);
+
+	uart16550_hw_set_line_parameters(uart16550_dev->device_port, parameters);
+*/
 	return 0;
 }
 
@@ -130,6 +173,9 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 
 	while (uart16550_hw_device_has_data(device_status)) {
 		u8 byte_value;
+
+
+
 		byte_value = uart16550_hw_read_from_device(device_port);
 		/*
 		 * TODO: Store the read byte_value in the kernel device
@@ -182,6 +228,12 @@ static int uart16550_init(void)
 
 		cdev_init(&com1.cdev, &uart16550_fops);
 		err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
+
+		INIT_KFIFO(com1.outgoing);
+		INIT_KFIFO(com1.incoming);
+		init_waitqueue_head(&(com1.wq_head));
+		com1.device_port = 0x3f8;
+
 		EXIT_ON_ERROR(err);
 	}
 	if (have_com2) {
@@ -199,6 +251,12 @@ static int uart16550_init(void)
 
 		cdev_init(&com2.cdev, &uart16550_fops);
 		err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
+
+		INIT_KFIFO(com2.outgoing);
+		INIT_KFIFO(com2.incoming);
+		init_waitqueue_head(&(com2.wq_head));
+		com2.device_port = 0x2f8;
+
 		EXIT_ON_ERROR(err);
 	}
 
