@@ -45,7 +45,7 @@ struct uart16550_dev {
 static struct class *uart16550_class = NULL;
 static const struct file_operations uart16550_fops = {
 	.owner = THIS_MODULE,
-	.open = &uart16550_open,
+	.open = uart16550_open,
 	.read = uart16550_read,
 	.write = uart16550_write,
 	.release = uart16550_release,
@@ -83,12 +83,13 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_
 	int chars_copied = 0;
 	char kernel_buff[count];
 	int to_copy_chars = kfifo_out(&uart16550_dev->outgoing, kernel_buff, count);
-	int uncopied_chars = copy_to_user(buff, &kernel_buff, to_copy_chars);
+	int uncopied_chars = copy_to_user(buff, kernel_buff, to_copy_chars);
 	int copied_chars = to_copy_chars - uncopied_chars;
 	*offp += copied_chars;
 	printk("SKDEBUG copied %d bytes for read", copied_chars);
-
+	wake_up(&uart16550_dev->wq_head);
 	return copied_chars;
+
 }
 
 ssize_t uart16550_write(struct file *filp,
@@ -101,9 +102,11 @@ ssize_t uart16550_write(struct file *filp,
 	printk("SKDEBUG begin sleeping write");
 	wait_event(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
 	printk("SKDEBUG finish sleeping write");
+	size_t available = kfifo_avail(&uart16550_dev->outgoing);
+	count = count <  available ? count : available;
 	char kernel_buffer[count];
 	printk("SKDEBUG copy from user with count %d", count);
-	int uncopied_chars = copy_from_user(&kernel_buffer, buff, count);
+	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 	printk("SKDEBUG finish from user with %d uncopied bytes and text : %s", uncopied_chars, kernel_buffer);
 	bytes_copied = count - uncopied_chars;
 	kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
@@ -117,7 +120,7 @@ ssize_t uart16550_write(struct file *filp,
 	 * TODO: Populate bytes_copied with the number of bytes
 	 *      that fit in the outgoing buffer.
 	 */
-
+	wake_up(&uart16550_dev->wq_head);
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
 	printk("SKDEBUG returning ..., outgoing is not empty :%d", !kfifo_is_empty(&uart16550_dev->outgoing));
@@ -127,7 +130,6 @@ ssize_t uart16550_write(struct file *filp,
 
 int uart16550_release(struct inode *inode, struct file *filp)
 {
-
 	return 0;
 }
 
