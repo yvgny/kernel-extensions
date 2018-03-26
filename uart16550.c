@@ -81,7 +81,10 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_
 	wait_event_interruptible(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
 	printk("SKDEBUG finish sleeping read");
 	int chars_copied = 0;
-	char kernel_buff[count];
+	char *kernel_buff = kmalloc(count, GFP_KERNEL);
+	if(NULL == kernel_buff) {
+		return -ENOMEM;
+	}
 	int to_copy_chars = kfifo_out(&uart16550_dev->outgoing, kernel_buff, count);
 	int uncopied_chars = copy_to_user(buff, kernel_buff, to_copy_chars);
 	int copied_chars = to_copy_chars - uncopied_chars;
@@ -100,11 +103,14 @@ ssize_t uart16550_write(struct file *filp,
 	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
 	printk("SKDEBUG write with cdev =  %p", uart16550_dev);
 	printk("SKDEBUG begin sleeping write");
-	wait_event(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
+	wait_event_interruptible(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
 	printk("SKDEBUG finish sleeping write");
 	size_t available = kfifo_avail(&uart16550_dev->outgoing);
 	count = count <  available ? count : available;
-	char kernel_buffer[count];
+	char *kernel_buffer = kmalloc(count, GFP_KERNEL);
+	if(NULL == kernel_buffer) {
+		return -ENOMEM;
+	}
 	printk("SKDEBUG copy from user with count %d", count);
 	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 	printk("SKDEBUG finish from user with %d uncopied bytes and text : %s", uncopied_chars, kernel_buffer);
