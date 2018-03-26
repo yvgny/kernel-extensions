@@ -7,6 +7,7 @@
 #include <linux/kfifo.h>
 #include <linux/uaccess.h>
 #include <linux/wait.h>
+#include <linux/spinlock.h>
 #include "uart16550.h"
 #include "uart16550_hw.h"
 
@@ -40,6 +41,7 @@ struct uart16550_dev {
 	DECLARE_KFIFO(outgoing, char, FIFO_SIZE);
 	DECLARE_KFIFO(incoming, char, FIFO_SIZE);
 	wait_queue_head_t wq_head;
+	spinlock_t lock;
 	u32 device_port;
 };
 static struct class *uart16550_class = NULL;
@@ -75,22 +77,23 @@ int uart16550_open(struct inode *inode, struct file *filp)
 
 ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
 {
-	printk("SKDEBUG read with filp =  %p", filp);
 	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
-	printk("SKDEBUG begin sleeping read, condition is %d",!kfifo_is_empty(&uart16550_dev->outgoing) );
-	wait_event_interruptible(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
-	printk("SKDEBUG finish sleeping read");
 	int chars_copied = 0;
 	char *kernel_buff = kmalloc(count, GFP_KERNEL);
 	if(NULL == kernel_buff) {
 		return -ENOMEM;
 	}
+
+	spin_lock_irq(&uart16550_dev->lock);
+	wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
+
 	int to_copy_chars = kfifo_out(&uart16550_dev->outgoing, kernel_buff, count);
 	int uncopied_chars = copy_to_user(buff, kernel_buff, to_copy_chars);
 	int copied_chars = to_copy_chars - uncopied_chars;
 	*offp += copied_chars;
-	printk("SKDEBUG copied %d bytes for read", copied_chars);
+	spin_unlock_irq(&uart16550_dev->lock);
 	wake_up(&uart16550_dev->wq_head);
+
 	return copied_chars;
 
 }
@@ -101,23 +104,19 @@ ssize_t uart16550_write(struct file *filp,
 {
 	int bytes_copied;
 	struct uart16550_dev *uart16550_dev = (struct uart16550_dev*) filp->private_data;
-	printk("SKDEBUG write with cdev =  %p", uart16550_dev);
-	printk("SKDEBUG begin sleeping write");
-	wait_event_interruptible(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
-	printk("SKDEBUG finish sleeping write");
-	size_t available = kfifo_avail(&uart16550_dev->outgoing);
-	count = count <  available ? count : available;
 	char *kernel_buffer = kmalloc(count, GFP_KERNEL);
 	if(NULL == kernel_buffer) {
 		return -ENOMEM;
 	}
-	printk("SKDEBUG copy from user with count %d", count);
+	spin_lock_irq(&uart16550_dev->lock);
+	wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
+	size_t available = kfifo_avail(&uart16550_dev->outgoing);
+	count = count <  available ? count : available;
+
 	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
-	printk("SKDEBUG finish from user with %d uncopied bytes and text : %s", uncopied_chars, kernel_buffer);
 	bytes_copied = count - uncopied_chars;
 	kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
 	*offp += bytes_copied;
-	printk("SKDEBUG copied %d bytes for write", bytes_copied);
 
 	/*
 	 * TODO: Write the code that takes the data provided by the
@@ -126,6 +125,7 @@ ssize_t uart16550_write(struct file *filp,
 	 * TODO: Populate bytes_copied with the number of bytes
 	 *      that fit in the outgoing buffer.
 	 */
+	spin_unlock_irq(&uart16550_dev->lock);
 	wake_up(&uart16550_dev->wq_head);
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
@@ -241,6 +241,7 @@ static int uart16550_init(void)
 		INIT_KFIFO(com1.incoming);
 		init_waitqueue_head(&(com1.wq_head));
 		com1.device_port = 0x3f8;
+		com1.lock = SPIN_LOCK_UNLOCKED;
 
 		EXIT_ON_ERROR(err);
 	}
@@ -264,6 +265,7 @@ static int uart16550_init(void)
 		INIT_KFIFO(com2.incoming);
 		init_waitqueue_head(&(com2.wq_head));
 		com2.device_port = 0x2f8;
+		com2.lock = SPIN_LOCK_UNLOCKED;
 
 		EXIT_ON_ERROR(err);
 	}
