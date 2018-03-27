@@ -41,7 +41,6 @@ struct uart16550_dev {
 	DECLARE_KFIFO(outgoing, char, FIFO_SIZE);
 	DECLARE_KFIFO(incoming, char, FIFO_SIZE);
 	wait_queue_head_t wq_head;
-	spinlock_t lock;
 	u32 device_port;
 };
 static struct class *uart16550_class = NULL;
@@ -83,16 +82,25 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count, loff_
 	if(NULL == kernel_buff) {
 		return -ENOMEM;
 	}
-
-	spin_lock_irq(&uart16550_dev->lock);
-	wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
+	printk("SKDEBUG read acquiring lock to read %d bytes...", count);
+	spin_lock_irq(&uart16550_dev->wq_head.lock);
+	printk("SKDEBUG read lock acquired ...");
+	printk("SKDEBUG read start waiting ...");
+	int err = wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_empty(&uart16550_dev->outgoing));
+	printk("SKDEBUG read finished waiting with err code %d. Number of available bytes is %d", err, kfifo_avail(&uart16550_dev->outgoing));
 
 	int to_copy_chars = kfifo_out(&uart16550_dev->outgoing, kernel_buff, count);
+	*offp += to_copy_chars;
+	spin_unlock_irq(&uart16550_dev->wq_head.lock);
+	printk("SKDEBUG read unlocked the lock ...");
+
 	int uncopied_chars = copy_to_user(buff, kernel_buff, to_copy_chars);
 	int copied_chars = to_copy_chars - uncopied_chars;
-	*offp += copied_chars;
-	spin_unlock_irq(&uart16550_dev->lock);
-	wake_up(&uart16550_dev->wq_head);
+	printk("SKDEBUG read copied %i bytes", copied_chars);
+	wake_up_locked(&uart16550_dev->wq_head);
+	printk("SKDEBUG read sent wake up action ...");
+
+	printk("SKDEBUG read returned ...");
 
 	return copied_chars;
 
@@ -108,15 +116,22 @@ ssize_t uart16550_write(struct file *filp,
 	if(NULL == kernel_buffer) {
 		return -ENOMEM;
 	}
-	spin_lock_irq(&uart16550_dev->lock);
-	wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
+	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
+
+	printk("SKDEBUG write acquiring lock ...");
+	spin_lock_irq(&uart16550_dev->wq_head.lock);
+	printk("SKDEBUG write lock acquired ...");
+	printk("SKDEBUG write start waiting ...");
+	int err = wait_event_interruptible_locked_irq(uart16550_dev->wq_head, !kfifo_is_full(&uart16550_dev->outgoing));
+	printk("SKDEBUG write finished waiting with err code %d...", err);
 	size_t available = kfifo_avail(&uart16550_dev->outgoing);
 	count = count <  available ? count : available;
 
-	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 	bytes_copied = count - uncopied_chars;
 	kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
 	*offp += bytes_copied;
+	printk("SKDEBUG write copied %i bytes", bytes_copied);
+
 
 	/*
 	 * TODO: Write the code that takes the data provided by the
@@ -125,11 +140,14 @@ ssize_t uart16550_write(struct file *filp,
 	 * TODO: Populate bytes_copied with the number of bytes
 	 *      that fit in the outgoing buffer.
 	 */
-	spin_unlock_irq(&uart16550_dev->lock);
-	wake_up(&uart16550_dev->wq_head);
+	wake_up_locked(&uart16550_dev->wq_head);
+	printk("SKDEBUG write sent wake up action ...");
+	spin_unlock_irq(&uart16550_dev->wq_head.lock);
+	printk("SKDEBUG write unlocked the lock ...");
+
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
-	printk("SKDEBUG returning ..., outgoing is not empty :%d", !kfifo_is_empty(&uart16550_dev->outgoing));
+	printk("SKDEBUG write returning ..., outgoing is not empty :%d", !kfifo_is_empty(&uart16550_dev->outgoing));
 
 	return bytes_copied;
 }
@@ -237,13 +255,13 @@ static int uart16550_init(void)
 		cdev_init(&com1.cdev, &uart16550_fops);
 		err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
 
+		EXIT_ON_ERROR(err);
+
 		INIT_KFIFO(com1.outgoing);
 		INIT_KFIFO(com1.incoming);
 		init_waitqueue_head(&(com1.wq_head));
 		com1.device_port = 0x3f8;
-		com1.lock = SPIN_LOCK_UNLOCKED;
 
-		EXIT_ON_ERROR(err);
 	}
 	if (have_com2) {
 		/* Setup the hardware device for COM2 */
@@ -261,13 +279,12 @@ static int uart16550_init(void)
 		cdev_init(&com2.cdev, &uart16550_fops);
 		err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
 
+		EXIT_ON_ERROR(err);
+
 		INIT_KFIFO(com2.outgoing);
 		INIT_KFIFO(com2.incoming);
 		init_waitqueue_head(&(com2.wq_head));
 		com2.device_port = 0x2f8;
-		com2.lock = SPIN_LOCK_UNLOCKED;
-
-		EXIT_ON_ERROR(err);
 	}
 
 	return 0;
