@@ -76,6 +76,7 @@ int uart16550_open(struct inode *inode, struct file *filp)
 ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 		       loff_t *offp)
 {
+	int err, copied_chars = 0;
 	struct uart16550_dev *uart16550_dev =
 		(struct uart16550_dev *)filp->private_data;
 	int chars_copied = 0;
@@ -83,18 +84,22 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 	if (NULL == kernel_buff) {
 		return -ENOMEM;
 	}
-	spin_lock_irq(&uart16550_dev->wq_head.lock);
-	int err = wait_event_interruptible_locked_irq(
-		uart16550_dev->wq_head,
-		!kfifo_is_empty(&uart16550_dev->incoming));
 
-	int to_copy_chars =
-		kfifo_out(&uart16550_dev->incoming, kernel_buff, count);
-	*offp += to_copy_chars;
-	spin_unlock_irq(&uart16550_dev->wq_head.lock);
+	do {
+		spin_lock_irq(&uart16550_dev->wq_head.lock);
+		err = wait_event_interruptible_locked_irq(
+			uart16550_dev->wq_head,
+			!kfifo_is_empty(&uart16550_dev->incoming));
 
-	int uncopied_chars = copy_to_user(buff, kernel_buff, to_copy_chars);
-	int copied_chars = to_copy_chars - uncopied_chars;
+		int to_copy_chars =
+			kfifo_out(&uart16550_dev->incoming, kernel_buff, count);
+		*offp += to_copy_chars;
+		spin_unlock_irq(&uart16550_dev->wq_head.lock);
+
+		int uncopied_chars =
+			copy_to_user(buff, kernel_buff, to_copy_chars);
+		copied_chars = to_copy_chars - uncopied_chars;
+	} while (copied_chars == 0 && err != -ERESTARTSYS);
 	wake_up_locked(&uart16550_dev->wq_head);
 
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
@@ -105,41 +110,32 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 ssize_t uart16550_write(struct file *filp, const char __user *buff,
 			size_t count, loff_t *offp)
 {
-	int bytes_copied;
+	int err, bytes_copied;
 	struct uart16550_dev *uart16550_dev =
 		(struct uart16550_dev *)filp->private_data;
 	char *kernel_buffer = kmalloc(count, GFP_KERNEL);
 	if (NULL == kernel_buffer) {
 		return -ENOMEM;
 	}
-	int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 
-	spin_lock_irq(&uart16550_dev->wq_head.lock);
-	int err = wait_event_interruptible_locked_irq(
-		uart16550_dev->wq_head,
-		!kfifo_is_full(&uart16550_dev->outgoing));
-	size_t available = kfifo_avail(&uart16550_dev->outgoing);
-	count = count < available ? count : available;
+	do {
+		int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 
-	bytes_copied = count - uncopied_chars;
-	kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
-	*offp += bytes_copied;
+		spin_lock_irq(&uart16550_dev->wq_head.lock);
+		err = wait_event_interruptible_locked_irq(
+			uart16550_dev->wq_head,
+			!kfifo_is_full(&uart16550_dev->outgoing));
+		size_t available = kfifo_avail(&uart16550_dev->outgoing);
+		count = count < available ? count : available;
 
+		bytes_copied = count - uncopied_chars;
+		kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
+		*offp += bytes_copied;
 
-	/*
-	 * TODO: Write the code that takes the data provided by the
-	 *      user from userspace and stores it in the kernel
-	 *      device outgoing buffer.
-	 * TODO: Populate bytes_copied with the number of bytes
-	 *      that fit in the outgoing buffer.
-	 */
-	spin_unlock_irq(&uart16550_dev->wq_head.lock);
+		spin_unlock_irq(&uart16550_dev->wq_head.lock);
+	} while (bytes_copied == 0 && err != -ERESTARTSYS);
 
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
-
-
-	// interrupt_handler(uart16550_dev->device_port == COM1_BASEPORT ?
-	// COM1_IRQ : COM2_IRQ, uart16550_dev);
 
 	return bytes_copied;
 }
@@ -197,7 +193,8 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 			kfifo_out(&uart16550_dev->outgoing, &byte_value, 1);
 			uart16550_hw_write_to_device(device_port, byte_value);
 		} else {
-			device_status = uart16550_hw_get_device_status(device_port);
+			device_status =
+				uart16550_hw_get_device_status(device_port);
 			break;
 		}
 
