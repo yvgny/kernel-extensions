@@ -74,11 +74,9 @@ int uart16550_open(struct inode *inode, struct file *filp)
 ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 		       loff_t *offp)
 {
-	// printk("SKDEBUG enter in read");
 	int err, copied_chars = 0;
 	struct uart16550_dev *uart16550_dev =
 		(struct uart16550_dev *)filp->private_data;
-	int chars_copied = 0;
 	char *kernel_buff = kmalloc(count, GFP_KERNEL);
 	if (NULL == kernel_buff) {
 		return -ENOMEM;
@@ -87,31 +85,23 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
 	do {
-		// printk("SKDEBUG waiting for spin lock in read");
 		spin_lock_irq(&uart16550_dev->wq_head_incoming.lock);
-		// printk("SKDEBUG lock taken in read");
-		// printk("SKDEBUG start waiting read");
 		err = wait_event_interruptible_locked_irq(
 			uart16550_dev->wq_head_incoming,
 			!kfifo_is_empty(&uart16550_dev->incoming));
-		// printk("SKDEBUG finish waiting in read");
 		int to_copy_chars =
 			kfifo_out(&uart16550_dev->incoming, kernel_buff, count);
 		*offp += to_copy_chars;
 		spin_unlock_irq(&uart16550_dev->wq_head_incoming.lock);
-		// printk("SKDEBUG lock released in read");
 		int uncopied_chars =
 			copy_to_user(buff, kernel_buff, to_copy_chars);
 
 		copied_chars = to_copy_chars - uncopied_chars;
-		// printk("SKDEBUG copied to user in read");
 	} while (copied_chars == 0 && err != -ERESTARTSYS);
 	kfree(kernel_buff);
 	wake_up_locked(&uart16550_dev->wq_head_incoming);
 
-
-	// printk("SKDEBUG leaving read with %d copied bytes and err %d",
-	// copied_chars, err);
+	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
 	return copied_chars;
 }
@@ -119,7 +109,6 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 ssize_t uart16550_write(struct file *filp, const char __user *buff,
 			size_t count, loff_t *offp)
 {
-	// printk("SKDEBUG enter in write");
 	int err, bytes_copied;
 	struct uart16550_dev *uart16550_dev =
 		(struct uart16550_dev *)filp->private_data;
@@ -131,15 +120,11 @@ ssize_t uart16550_write(struct file *filp, const char __user *buff,
 	do {
 		int uncopied_chars = copy_from_user(kernel_buffer, buff, count);
 
-		// printk("SKDEBUG waiting for spin lock in write");
 		spin_lock_irq(&uart16550_dev->wq_head_outgoing.lock);
-		// printk("SKDEBUG lock taken in write");
-		// printk("SKDEBUG start waiting in write");
 		err = wait_event_interruptible_locked_irq(
 			uart16550_dev->wq_head_outgoing,
 			!kfifo_is_full(&uart16550_dev->outgoing));
 
-		// printk("SKDEBUG finish waiting in write");
 		size_t available = kfifo_avail(&uart16550_dev->outgoing);
 		count = count < available ? count : available;
 
@@ -149,13 +134,10 @@ ssize_t uart16550_write(struct file *filp, const char __user *buff,
 		*offp += bytes_copied;
 
 		spin_unlock_irq(&uart16550_dev->wq_head_outgoing.lock);
-		// printk("SKDEBUG lock released in write");
 	} while (bytes_copied == 0 && err != -ERESTARTSYS);
 	kfree(kernel_buffer);
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
-	// printk("SKDEBUG leaving write with %d copied bytes and err %d",
-	// bytes_copied, err);
 
 	return bytes_copied;
 }
@@ -168,6 +150,7 @@ int uart16550_release(struct inode *inode, struct file *filp)
 long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd,
 			      unsigned long arg)
 {
+	int err = 0;
 	if (cmd != UART16550_IOCTL_SET_LINE) {
 		return -EINVAL;
 	}
@@ -177,30 +160,28 @@ long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd,
 		(struct uart16550_dev *)filp->private_data;
 	struct uart16550_line_info parameters;
 
-	copy_from_user(&parameters, arg, sizeof(struct uart16550_line_info));
-
-	printk("SKDEBUG arg in hex format : %lx", arg);
+	err = copy_from_user(&parameters, (void *)arg,
+			     sizeof(struct uart16550_line_info));
+	if (err != 0) {
+		return -EINVAL;
+	}
 
 	char baud[] = UART16550_BAUD_VALUES;
-	printk("SKDEBUG baud : %u", parameters.baud);
 	if (!contains(parameters.baud, baud, UART16550_BAUD_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char len[] = UART16550_LEN_VALUES;
-	printk("SKDEBUG len : %u", parameters.len);
 	if (!contains(parameters.len, len, UART16550_LEN_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char par[] = UART16550_PAR_VALUES;
-	printk("SKDEBUG par : %u", parameters.par);
 	if (!contains(parameters.par, par, UART16550_PAR_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char stop[] = UART16550_STOP_VALUES;
-	printk("SKDEBUG stop : %u", parameters.stop);
 	if (!contains(parameters.stop, stop, UART16550_STOP_VALUES_SIZE)) {
 		return -EINVAL;
 	}
@@ -224,17 +205,11 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 	device_status = uart16550_hw_get_device_status(device_port);
 
 	while (uart16550_hw_device_can_send(device_status)) {
-		// printk("SKDEBUG waiting for spin lock in interrupt for cam
-		// send");
 		spin_lock_irqsave(&uart16550_dev->wq_head_outgoing.lock, a);
-		// printk("SKDEBUG lock taken in interrupt for cas send");
 
 		u8 byte_value;
 		if (!kfifo_is_empty(&uart16550_dev->outgoing)) {
-			// printk("SKDEBUG interrupt cppied one byte from
-			// outgoin");
-			if (kfifo_out(&uart16550_dev->outgoing, &byte_value, 1)
-			    != 1) {
+			if (kfifo_out(&uart16550_dev->outgoing, &byte_value, 1) != 1) {
 				spin_unlock_irqrestore(
 					&uart16550_dev->wq_head_outgoing.lock,
 					a);
@@ -246,7 +221,6 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 				uart16550_hw_get_device_status(device_port);
 			spin_unlock_irqrestore(
 				&uart16550_dev->wq_head_outgoing.lock, a);
-			// printk("SKDEBUG lock released in interrupt");
 
 			break;
 		}
@@ -254,20 +228,16 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 		device_status = uart16550_hw_get_device_status(device_port);
 		spin_unlock_irqrestore(&uart16550_dev->wq_head_outgoing.lock,
 				       a);
-		// printk("SKDEBUG lock released in interrupt");
 	}
 
+	wake_up_locked(&uart16550_dev->wq_head_outgoing);
+
 	while (uart16550_hw_device_has_data(device_status)) {
-		// printk("SKDEBUG waiting for spin lock in interrupt in has
-		// data");
 		spin_lock_irqsave(&uart16550_dev->wq_head_incoming.lock, a);
-		// printk("SKDEBUG lock taken in intrrupt for has data");
 
 		u8 byte_value;
 
-		if (!kfifo_is_full(&uart16550_dev->incoming)) {
-			// printk("SKDEBUG interrupt cppied one byte in
-			// incoming");
+		if(!kfifo_is_full(&uart16550_dev->incoming)) {
 			byte_value = uart16550_hw_read_from_device(device_port);
 			kfifo_in(&uart16550_dev->incoming, &byte_value, 1);
 		} else {
@@ -275,14 +245,12 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 				uart16550_hw_get_device_status(device_port);
 			spin_unlock_irqrestore(
 				&uart16550_dev->wq_head_incoming.lock, a);
-			// printk("SKDEBUG lock relased in interrupt");
 
 			break;
 		}
 		device_status = uart16550_hw_get_device_status(device_port);
 		spin_unlock_irqrestore(&uart16550_dev->wq_head_incoming.lock,
 				       a);
-		// printk("SKDEBUG lock relased in interrupt");
 	}
 
 	wake_up_locked(&uart16550_dev->wq_head_incoming);
@@ -315,7 +283,7 @@ static int uart16550_init(void)
 	 */
 	uart16550_class = class_create(THIS_MODULE, MODULE_NAME);
 	if (IS_ERR(uart16550_class)) {
-		return PTR_ERR(device);
+		return PTR_ERR(uart16550_class);
 	}
 
 
