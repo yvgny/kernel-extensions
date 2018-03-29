@@ -54,10 +54,6 @@ static const struct file_operations uart16550_fops = {
 	.unlocked_ioctl = uart16550_unlocked_ioctl,
 };
 
-
-/*
- * TODO: Populate major number from module options (when it is given).
- */
 static int major = 42;
 static int behavior = 0x03;
 static struct uart16550_dev com1, com2;
@@ -106,6 +102,7 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 		// printk("SKDEBUG lock released in read");
 		int uncopied_chars =
 			copy_to_user(buff, kernel_buff, to_copy_chars);
+
 		copied_chars = to_copy_chars - uncopied_chars;
 		// printk("SKDEBUG copied to user in read");
 	} while (copied_chars == 0 && err != -ERESTARTSYS);
@@ -114,7 +111,7 @@ ssize_t uart16550_read(struct file *filp, char __user *buff, size_t count,
 
 
 	// printk("SKDEBUG leaving read with %d copied bytes and err %d",
-	      // copied_chars, err);
+	// copied_chars, err);
 
 	return copied_chars;
 }
@@ -147,7 +144,8 @@ ssize_t uart16550_write(struct file *filp, const char __user *buff,
 		count = count < available ? count : available;
 
 		bytes_copied = count - uncopied_chars;
-		kfifo_in(&uart16550_dev->outgoing, kernel_buffer, bytes_copied);
+		bytes_copied = kfifo_in(&uart16550_dev->outgoing, kernel_buffer,
+					bytes_copied);
 		*offp += bytes_copied;
 
 		spin_unlock_irq(&uart16550_dev->wq_head_outgoing.lock);
@@ -157,7 +155,7 @@ ssize_t uart16550_write(struct file *filp, const char __user *buff,
 	uart16550_hw_force_interrupt_reemit(uart16550_dev->device_port);
 
 	// printk("SKDEBUG leaving write with %d copied bytes and err %d",
-	      // bytes_copied, err);
+	// bytes_copied, err);
 
 	return bytes_copied;
 }
@@ -180,7 +178,7 @@ long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	struct uart16550_line_info parameters;
 
 	copy_from_user(&parameters, arg, sizeof(struct uart16550_line_info));
-	
+
 	printk("SKDEBUG arg in hex format : %lx", arg);
 
 	char baud[] = UART16550_BAUD_VALUES;
@@ -221,23 +219,27 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 
 	struct uart16550_dev *uart16550_dev = (struct uart16550_dev *)data;
 	device_port = uart16550_dev->device_port;
-	/*
-	 * TODO: Write the code that handles a hardware interrupt.
-	 * TODO: Populate device_port with the port of the correct device.
-	 */
 	unsigned long a;
 
 	device_status = uart16550_hw_get_device_status(device_port);
 
 	while (uart16550_hw_device_can_send(device_status)) {
-		// printk("SKDEBUG waiting for spin lock in interrupt for cam send");
+		// printk("SKDEBUG waiting for spin lock in interrupt for cam
+		// send");
 		spin_lock_irqsave(&uart16550_dev->wq_head_outgoing.lock, a);
 		// printk("SKDEBUG lock taken in interrupt for cas send");
 
 		u8 byte_value;
 		if (!kfifo_is_empty(&uart16550_dev->outgoing)) {
-			// printk("SKDEBUG interrupt cppied one byte from outgoin");
-			kfifo_out(&uart16550_dev->outgoing, &byte_value, 1);
+			// printk("SKDEBUG interrupt cppied one byte from
+			// outgoin");
+			if (kfifo_out(&uart16550_dev->outgoing, &byte_value, 1)
+			    != 1) {
+				spin_unlock_irqrestore(
+					&uart16550_dev->wq_head_outgoing.lock,
+					a);
+				continue;
+			}
 			uart16550_hw_write_to_device(device_port, byte_value);
 		} else {
 			device_status =
@@ -256,14 +258,16 @@ irqreturn_t interrupt_handler(int irq_no, void *data)
 	}
 
 	while (uart16550_hw_device_has_data(device_status)) {
-		// printk("SKDEBUG waiting for spin lock in interrupt in has data");
+		// printk("SKDEBUG waiting for spin lock in interrupt in has
+		// data");
 		spin_lock_irqsave(&uart16550_dev->wq_head_incoming.lock, a);
 		// printk("SKDEBUG lock taken in intrrupt for has data");
 
 		u8 byte_value;
 
 		if (!kfifo_is_full(&uart16550_dev->incoming)) {
-			// printk("SKDEBUG interrupt cppied one byte in incoming");
+			// printk("SKDEBUG interrupt cppied one byte in
+			// incoming");
 			byte_value = uart16550_hw_read_from_device(device_port);
 			kfifo_in(&uart16550_dev->incoming, &byte_value, 1);
 		} else {
@@ -310,6 +314,10 @@ static int uart16550_init(void)
 	 * Setup a sysfs class & device to make /dev/com1 & /dev/com2 appear.
 	 */
 	uart16550_class = class_create(THIS_MODULE, MODULE_NAME);
+	if (IS_ERR(uart16550_class)) {
+		return PTR_ERR(device);
+	}
+
 
 	if (have_com1) {
 		/* Setup the hardware device for COM1 */
@@ -325,8 +333,8 @@ static int uart16550_init(void)
 		}
 
 		cdev_init(&com1.cdev, &uart16550_fops);
-		err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
 
+		err = cdev_add(&com1.cdev, MKDEV(major, MINOR_COM1), 1);
 		EXIT_ON_ERROR(err);
 
 		INIT_KFIFO(com1.outgoing);
@@ -353,8 +361,8 @@ static int uart16550_init(void)
 		}
 
 		cdev_init(&com2.cdev, &uart16550_fops);
-		err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
 
+		err = cdev_add(&com2.cdev, MKDEV(major, MINOR_COM2), 1);
 		EXIT_ON_ERROR(err);
 
 		INIT_KFIFO(com2.outgoing);
@@ -374,11 +382,6 @@ static int uart16550_init(void)
 static void uart16550_cleanup(void)
 {
 	int have_com1, have_com2;
-	/*
-	 * TODO: Write driver cleanup code here.
-	 * TODO: have_com1 & have_com2 need to be set according to the
-	 *      module parameters.
-	 */
 
 	have_com1 = behavior == OPTION_COM1 || behavior == OPTION_BOTH;
 	have_com2 = behavior == OPTION_COM2 || behavior == OPTION_BOTH;
