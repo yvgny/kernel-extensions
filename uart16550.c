@@ -174,31 +174,35 @@ long uart16550_unlocked_ioctl(struct file *filp, unsigned int cmd,
 		return -EINVAL;
 	}
 
+
 	struct uart16550_dev *uart16550_dev =
 		(struct uart16550_dev *)filp->private_data;
-	struct uart16550_line_info parameters =
-		*((struct uart16550_line_info *)&arg);
+	struct uart16550_line_info parameters;
+
+	copy_from_user(&parameters, arg, sizeof(struct uart16550_line_info));
+	
+	printk("SKDEBUG arg in hex format : %lx", arg);
 
 	char baud[] = UART16550_BAUD_VALUES;
-	// printk("SKDEBUG baud : %d", parameters.baud);
+	printk("SKDEBUG baud : %u", parameters.baud);
 	if (!contains(parameters.baud, baud, UART16550_BAUD_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char len[] = UART16550_LEN_VALUES;
-	// printk("SKDEBUG len : %d", parameters.len);
+	printk("SKDEBUG len : %u", parameters.len);
 	if (!contains(parameters.len, len, UART16550_LEN_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char par[] = UART16550_PAR_VALUES;
-	// printk("SKDEBUG par : %d", parameters.par);
+	printk("SKDEBUG par : %u", parameters.par);
 	if (!contains(parameters.par, par, UART16550_PAR_VALUES_SIZE)) {
 		return -EINVAL;
 	}
 
 	char stop[] = UART16550_STOP_VALUES;
-	// printk("SKDEBUG stop : %d", parameters.stop);
+	printk("SKDEBUG stop : %u", parameters.stop);
 	if (!contains(parameters.stop, stop, UART16550_STOP_VALUES_SIZE)) {
 		return -EINVAL;
 	}
