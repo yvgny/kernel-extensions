@@ -338,6 +338,20 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &min_wakeup_granularity_ns,
 		.extra2		= &max_wakeup_granularity_ns,
 	},
+	{
+		.procname       = "sched_dummy_timeslice",
+		.data		= &sysctl_sched_dummy_timeslice,
+		.maxlen		= sizeof(unsigned int),
+		.mode 		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname 	= "sched_dummy_age_threshold",
+		.data		= &sysctl_sched_dummy_age_threshold,
+		.maxlen		= sizeof(unsigned int),
+		.mode 		= 0644,
+		.proc_handler 	= proc_dointvec,
+	},
 #ifdef CONFIG_SMP
 	{
 		.procname	= "sched_tunable_scaling",

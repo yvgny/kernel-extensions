@@ -429,6 +429,10 @@ struct sched_rt_entity {
 #endif
 } __randomize_layout;
 
+struct sched_dummy_entity {
+	struct list_head run_list;
+};
+
 struct sched_dl_entity {
 	struct rb_node			rb_node;
 
@@ -563,6 +567,7 @@ struct task_struct {
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
+	struct sched_dummy_entity dummy_se;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif
@@ -1104,6 +1109,21 @@ struct task_struct {
 	 * Do not put anything below here!
 	 */
 };
+
+#define MIN_DUMMY_PRIO 131
+#define MAX_DUMMY_PRIO 135
+
+static inline int dummy_prio(int prio)
+{
+	if (prio >= MIN_DUMMY_PRIO && prio <= MAX_DUMMY_PRIO)
+		return 1;
+	return 0;
+}
+
+static inline int dummy_task(struct task_struct *p)
+{
+	return dummy_prio(p->prio);
+}
 
 static inline struct pid *task_pid(struct task_struct *task)
 {
