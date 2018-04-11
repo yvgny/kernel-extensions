@@ -79,7 +79,7 @@ static void check_preempt_curr_dummy(struct rq *rq, struct task_struct *p, int f
 {
 }
 
-static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struct* prev, struct pin_cookie cookie)
+static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struct* prev, struct rq_flags* rf)
 {
 	struct dummy_rq *dummy_rq = &rq->dummy;
 	struct sched_dummy_entity *next;
