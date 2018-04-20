@@ -3,8 +3,6 @@
  */
 
 #include "sched.h"
-#include <sys/time.h>
-#include <sys/resource.h>
 
 /*
  * Timeslice and age threshold are repsented in jiffies. Default timeslice
