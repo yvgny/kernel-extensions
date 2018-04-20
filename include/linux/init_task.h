@@ -249,6 +249,8 @@ extern struct cred init_cred;
 	},								\
 	.dummy_se = {							\
 		.run_list 	= LIST_HEAD_INIT(tsk.dummy_se.run_list),\
+		.time_slice	= 0					\
+		.age		= 0					\
 	},								\
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\

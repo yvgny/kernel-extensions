@@ -60,7 +60,6 @@ static inline struct task_struct *dummy_task_of(struct sched_dummy_entity *dummy
 static inline void _enqueue_task_dummy(struct rq *rq, struct task_struct *p)
 {
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
-	dummy_se->time_slice = DUMMY_TIMESLICE;
 	int priority = p->prio - FIRST_PRIORITY;
 	struct list_head *queue = &rq->dummy + priority;
 	list_add_tail(&dummy_se->run_list, queue);
@@ -106,6 +105,7 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 {
 	struct dummy_rq *dummy_rq = &rq->dummy;
 	struct sched_dummy_entity *next;
+	struct task_struct *task;
 	int i;
 	for(i = 0 ; i < NR_PRIORITIES ; i++)
 	{
@@ -113,7 +113,9 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 		{
 			next = list_first_entry(&dummy_rq->p131 + i, struct sched_dummy_entity, run_list);
 	                put_prev_task(rq, prev);
-			return dummy_task_of(next);
+			task = dummy_task_of(next);
+			task->prio = task->static_prio;
+			return task;
 		}
 	}
 	return NULL;
@@ -137,21 +139,24 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 		list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
 		{
 			task = dummy_task_of(entity);
-			task->age++;
-			if(task->age >= DUMMY_AGE_THRESHOLD)
+			if(task != rq->curr)
 			{
-				task->age = 0;
-				int prio = task->prio;
-				if(prio > FIRST_PRIORITY)
+				task->age++;
+				if(task->age >= DUMMY_AGE_THRESHOLD)
 				{
-					setpriority(PRIO_PROCESS, 0, (prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE) - 1);
-					reschedule(rq, task);
+					task->dummy_se->age = 0;
+					int prio = task->prio;
+					if(prio > FIRST_PRIORITY)
+					{
+						setpriority(PRIO_PROCESS, 0, (prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE) - 1);
+						reschedule(rq, task);
+					}
 				}
 			}
 		}
 	}
-	curr->time_slice--;
-	if(curr->time_slice <= 0) {
+	curr->time_slice++;
+	if(curr->time_slice >= DUMMY_TIME_SLICE) {
 		reschedule(rq, curr);
 	}
 }

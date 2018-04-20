@@ -431,6 +431,8 @@ struct sched_rt_entity {
 
 struct sched_dummy_entity {
 	struct list_head run_list;
+	int time_slice;
+	int age;
 };
 
 struct sched_dl_entity {
