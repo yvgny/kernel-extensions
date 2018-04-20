@@ -23,7 +23,7 @@ static inline unsigned int get_timeslice(void)
 	return sysctl_sched_dummy_timeslice;
 }
 
-static void reschedule(struct rq *rq, struct task_struct *p, int change_prio)
+static void reschedule(struct rq *rq, struct task_struct *p)
 {
 	dequeue(rq, p, 0);
 	enqueue(rq, p, 0);
@@ -89,15 +89,15 @@ static void dequeue_task_dummy(struct rq *rq, struct task_struct *p, int flags)
 
 static void yield_task_dummy(struct rq *rq)
 {
-	resched_curr(rq);
 	reschedule(rq, rq->curr);
+	resched_curr(rq);
 }
 
 static void check_preempt_curr_dummy(struct rq *rq, struct task_struct *p, int flags)
 {
 	if(rq->curr->prio > p->prio) {
-		resched_curr(rq);
 		reschedule(rq, rq->curr);
+		resched_curr(rq);
 	}
 }
 
@@ -141,8 +141,8 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 			task = dummy_task_of(entity);
 			if(task != rq->curr)
 			{
-				task->age++;
-				if(task->age >= DUMMY_AGE_THRESHOLD)
+				task->dummy_se->age++;
+				if(task->dummy_se->age >= DUMMY_AGE_THRESHOLD)
 				{
 					task->dummy_se->age = 0;
 					int prio = task->prio;
@@ -158,6 +158,7 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 	curr->time_slice++;
 	if(curr->time_slice >= DUMMY_TIME_SLICE) {
 		reschedule(rq, curr);
+		resched_curr(rq);
 	}
 }
 
@@ -173,8 +174,8 @@ static void prio_changed_dummy(struct rq*rq, struct task_struct *p, int oldprio)
 {
 	if(rq->curr->prio > p->prio)
 	{
-		resched_curr(rq);
 		reschedule(rq, rq->curr);
+		resched_curr(rq);
 	}
 }
 
