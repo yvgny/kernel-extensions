@@ -1,0 +1,178 @@
+  CHK     include/config/kernel.release
+  CHK     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  DESCEND  objtool
+  CHK     scripts/mod/devicetable-offsets.h
+  CHK     include/generated/bounds.h
+  CHK     include/generated/timeconst.h
+  CHK     include/generated/asm-offsets.h
+  CALL    scripts/checksyscalls.sh
+  CHK     include/generated/compile.h
+  CC      kernel/sched/dummy.o
+kernel/sched/dummy.c: In function ‘reschedule’:
+kernel/sched/dummy.c:26:2: error: implicit declaration of function ‘dequeue’ [-Werror=implicit-function-declaration]
+  dequeue(rq, p, 0);
+  ^~~~~~~
+kernel/sched/dummy.c:27:2: error: implicit declaration of function ‘enqueue’ [-Werror=implicit-function-declaration]
+  enqueue(rq, p, 0);
+  ^~~~~~~
+kernel/sched/dummy.c: In function ‘_enqueue_task_dummy’:
+kernel/sched/dummy.c:62:28: error: initialization from incompatible pointer type [-Werror=incompatible-pointer-types]
+  struct list_head *queue = &rq->dummy + priority;
+                            ^
+kernel/sched/dummy.c: In function ‘task_tick_dummy’:
+kernel/sched/dummy.c:132:31: error: incompatible types when initializing type ‘struct list_head *’ using type ‘struct dummy_rq’
+  struct list_head *dummy_rq = rq->dummy;
+                               ^~
+kernel/sched/dummy.c:135:6: error: ‘i’ undeclared (first use in this function)
+  for(i = 0 ; i < NR_PRIORITIES ; i++)
+      ^
+kernel/sched/dummy.c:135:6: note: each undeclared identifier is reported only once for each function it appears in
+In file included from ./arch/x86/include/asm/percpu.h:45:0,
+                 from ./arch/x86/include/asm/current.h:6,
+                 from ./include/linux/sched.h:12,
+                 from kernel/sched/sched.h:3,
+                 from kernel/sched/dummy.c:5:
+kernel/sched/dummy.c:137:40: error: ‘struct list_head’ has no member named ‘p131’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+                                        ^
+./include/linux/kernel.h:929:26: note: in definition of macro ‘container_of’
+  void *__mptr = (void *)(ptr);     \
+                          ^~~
+./include/linux/list.h:377:2: note: in expansion of macro ‘list_entry’
+  list_entry((ptr)->next, type, member)
+  ^~~~~~~~~~
+./include/linux/list.h:464:13: note: in expansion of macro ‘list_first_entry’
+  for (pos = list_first_entry(head, typeof(*pos), member); \
+             ^~~~~~~~~~~~~~~~
+kernel/sched/dummy.c:137:3: note: in expansion of macro ‘list_for_each_entry’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+   ^~~~~~~~~~~~~~~~~~~
+In file included from ./arch/x86/include/asm/current.h:5:0,
+                 from ./include/linux/sched.h:12,
+                 from kernel/sched/sched.h:3,
+                 from kernel/sched/dummy.c:5:
+kernel/sched/dummy.c:137:40: error: ‘struct list_head’ has no member named ‘p131’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+                                        ^
+./include/linux/compiler.h:301:19: note: in definition of macro ‘__compiletime_assert’
+   bool __cond = !(condition);    \
+                   ^~~~~~~~~
+./include/linux/compiler.h:324:2: note: in expansion of macro ‘_compiletime_assert’
+  _compiletime_assert(condition, msg, __compiletime_assert_, __LINE__)
+  ^~~~~~~~~~~~~~~~~~~
+./include/linux/build_bug.h:47:37: note: in expansion of macro ‘compiletime_assert’
+ #define BUILD_BUG_ON_MSG(cond, msg) compiletime_assert(!(cond), msg)
+                                     ^~~~~~~~~~~~~~~~~~
+./include/linux/kernel.h:930:2: note: in expansion of macro ‘BUILD_BUG_ON_MSG’
+  BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) && \
+  ^~~~~~~~~~~~~~~~
+./include/linux/kernel.h:930:20: note: in expansion of macro ‘__same_type’
+  BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) && \
+                    ^~~~~~~~~~~
+./include/linux/list.h:366:2: note: in expansion of macro ‘container_of’
+  container_of(ptr, type, member)
+  ^~~~~~~~~~~~
+./include/linux/list.h:377:2: note: in expansion of macro ‘list_entry’
+  list_entry((ptr)->next, type, member)
+  ^~~~~~~~~~
+./include/linux/list.h:464:13: note: in expansion of macro ‘list_first_entry’
+  for (pos = list_first_entry(head, typeof(*pos), member); \
+             ^~~~~~~~~~~~~~~~
+kernel/sched/dummy.c:137:3: note: in expansion of macro ‘list_for_each_entry’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+   ^~~~~~~~~~~~~~~~~~~
+kernel/sched/dummy.c:137:40: error: ‘struct list_head’ has no member named ‘p131’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+                                        ^
+./include/linux/compiler.h:301:19: note: in definition of macro ‘__compiletime_assert’
+   bool __cond = !(condition);    \
+                   ^~~~~~~~~
+./include/linux/compiler.h:324:2: note: in expansion of macro ‘_compiletime_assert’
+  _compiletime_assert(condition, msg, __compiletime_assert_, __LINE__)
+  ^~~~~~~~~~~~~~~~~~~
+./include/linux/build_bug.h:47:37: note: in expansion of macro ‘compiletime_assert’
+ #define BUILD_BUG_ON_MSG(cond, msg) compiletime_assert(!(cond), msg)
+                                     ^~~~~~~~~~~~~~~~~~
+./include/linux/kernel.h:930:2: note: in expansion of macro ‘BUILD_BUG_ON_MSG’
+  BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) && \
+  ^~~~~~~~~~~~~~~~
+./include/linux/kernel.h:931:6: note: in expansion of macro ‘__same_type’
+     !__same_type(*(ptr), void),   \
+      ^~~~~~~~~~~
+./include/linux/list.h:366:2: note: in expansion of macro ‘container_of’
+  container_of(ptr, type, member)
+  ^~~~~~~~~~~~
+./include/linux/list.h:377:2: note: in expansion of macro ‘list_entry’
+  list_entry((ptr)->next, type, member)
+  ^~~~~~~~~~
+./include/linux/list.h:464:13: note: in expansion of macro ‘list_first_entry’
+  for (pos = list_first_entry(head, typeof(*pos), member); \
+             ^~~~~~~~~~~~~~~~
+kernel/sched/dummy.c:137:3: note: in expansion of macro ‘list_for_each_entry’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+   ^~~~~~~~~~~~~~~~~~~
+In file included from ./include/linux/rculist.h:10:0,
+                 from ./include/linux/pid.h:5,
+                 from ./include/linux/sched.h:14,
+                 from kernel/sched/sched.h:3,
+                 from kernel/sched/dummy.c:5:
+kernel/sched/dummy.c:137:40: error: ‘struct list_head’ has no member named ‘p131’
+   list_for_each_entry(entity, &dummy_rq->p131 + i, run_list)
+                                        ^
+./include/linux/list.h:465:24: note: in definition of macro ‘list_for_each_entry’
+       &pos->member != (head);     \
+                        ^~~~
+kernel/sched/dummy.c:142:19: error: invalid type argument of ‘->’ (have ‘struct sched_dummy_entity’)
+     task->dummy_se->age++;
+                   ^~
+kernel/sched/dummy.c:143:22: error: invalid type argument of ‘->’ (have ‘struct sched_dummy_entity’)
+     if(task->dummy_se->age >= DUMMY_AGE_THRESHOLD)
+                      ^~
+kernel/sched/dummy.c:145:20: error: invalid type argument of ‘->’ (have ‘struct sched_dummy_entity’)
+      task->dummy_se->age = 0;
+                    ^~
+kernel/sched/dummy.c:146:6: warning: ISO C90 forbids mixed declarations and code [-Wdeclaration-after-statement]
+      int prio = task->prio;
+      ^~~
+kernel/sched/dummy.c:149:7: error: implicit declaration of function ‘setpriority’ [-Werror=implicit-function-declaration]
+       setpriority(PRIO_PROCESS, 0, (prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE) - 1);
+       ^~~~~~~~~~~
+kernel/sched/dummy.c:156:16: error: invalid type argument of ‘->’ (have ‘struct sched_dummy_entity’)
+  curr->dummy_se->time_slice++;
+                ^~
+kernel/sched/dummy.c:157:19: error: invalid type argument of ‘->’ (have ‘struct sched_dummy_entity’)
+  if(curr->dummy_se->time_slice >= DUMMY_TIMESLICE) {
+                   ^~
+cc1: some warnings being treated as errors
+scripts/Makefile.build:316: recipe for target 'kernel/sched/dummy.o' failed
+make[2]: *** [kernel/sched/dummy.o] Error 1
+scripts/Makefile.build:575: recipe for target 'kernel/sched' failed
+make[1]: *** [kernel/sched] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  CC      kernel/time/time.o
+  CC      mm/slab.o
+  CC      kernel/time/timer.o
+  CC      mm/kmemleak.o
+  CC      kernel/time/hrtimer.o
+  AR      mm/built-in.o
+  CC      kernel/time/timekeeping.o
+  CC      fs/open.o
+  CC      kernel/time/ntp.o
+  CC      fs/read_write.o
+  CC      kernel/time/clocksource.o
+  CC      kernel/time/timer_list.o
+  CC      fs/file_table.o
+  CC      kernel/time/alarmtimer.o
+  CC      kernel/time/posix-timers.o
+  CC      fs/super.o
+scripts/Makefile.build:316: recipe for target 'fs/super.o' failed
+make[1]: *** [fs/super.o] Interrupt
+scripts/Makefile.build:316: recipe for target 'kernel/time/posix-timers.o' failed
+make[2]: *** [kernel/time/posix-timers.o] Interrupt
+Makefile:1019: recipe for target 'fs' failed
+make: *** [fs] Interrupt
+scripts/Makefile.build:575: recipe for target 'kernel/time' failed
+make[1]: *** [kernel/time] Interrupt
+Makefile:1019: recipe for target 'kernel' failed
+make: *** [kernel] Interrupt
