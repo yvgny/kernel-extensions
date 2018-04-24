@@ -33,11 +33,13 @@ static inline unsigned int get_age_threshold(void)
 
 void init_dummy_rq(struct dummy_rq *dummy_rq)
 {
+	printk_deferred("SKDEBUG: Initialization of rq\n");
 	int i;
 	for(i = 0 ; i < NR_PRIORITIES ; i++)
 	{
 		INIT_LIST_HEAD(&dummy_rq->p131+i);
 	}
+	printk_deferred("SKDEBUG: Finished initialization, going out\n");
 }
 
 /*
@@ -51,16 +53,20 @@ static inline struct task_struct *dummy_task_of(struct sched_dummy_entity *dummy
 
 static inline void _enqueue_task_dummy(struct rq *rq, struct task_struct *p)
 {
+	printk_deferred("SKDEBUG: Enqueuing task %lf\n", (long)p->pid);
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
 	int priority = p->prio - FIRST_PRIORITY;
 	struct list_head *queue = &rq->dummy.p131 + priority;
 	list_add_tail(&dummy_se->run_list, queue);
+	printk_deferred("SKDEBUG: Finished enqueuing task %lf\n", (long)p->pid);
 }
 
 static inline void _dequeue_task_dummy(struct task_struct *p)
 {
+	printk_deferred("SKDEBUG: Dequeuing task %lf\n", (long)p->pid);
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
 	list_del_init(&dummy_se->run_list);
+	printk_deferred("SKDEBUG: Finished dequeuing task %lf\n", (long)p->pid);
 }
 
 /*
@@ -81,26 +87,33 @@ static void dequeue_task_dummy(struct rq *rq, struct task_struct *p, int flags)
 
 static void reschedule(struct rq *rq, struct task_struct *p)
 {
+	printk_deferred("SKDEBUG: Rescheduling task %lf\n", (long)p->pid);
 	dequeue_task_dummy(rq, p, 0);
 	enqueue_task_dummy(rq, p, 0);
+	printk_deferred("SKDEBUG: Finished rescheduling task %lf\n", (long)p->pid);
 }
 
 static void yield_task_dummy(struct rq *rq)
 {
+	printk_deferred("SKDEBUG: Yielding task %lf\n", (long)rq->curr->pid);
 	reschedule(rq, rq->curr);
 	resched_curr(rq);
+	printk_deferred("SKDEBUG: Finished yielding task %lf\n", (long)rq->curr->pid);
 }
 
 static void check_preempt_curr_dummy(struct rq *rq, struct task_struct *p, int flags)
 {
+	printk_deferred("SKDEBUG: Checking preemption for task %lf replaced by %lf\n", (long)rq->curr->pid, (long)p->pid);
 	if(rq->curr->prio > p->prio) {
 		reschedule(rq, rq->curr);
 		resched_curr(rq);
 	}
+	printk_deferred("SKDEBUG: Finished checking preemption %lf, %lf\n", (long)rq->curr->pid, (long)p->pid);
 }
 
 static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struct* prev, struct rq_flags* rf)
 {
+	printk_deferred("SKDEBUG: Picking next task\n");
 	struct dummy_rq *dummy_rq = &rq->dummy;
 	struct sched_dummy_entity *next;
 	struct task_struct *task;
@@ -113,9 +126,11 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 	                put_prev_task(rq, prev);
 			task = dummy_task_of(next);
 			task->prio = task->static_prio;
+			printk_deferred("SKDEBUG: Finished picking and returning task %lf\n", (long)task->pid);
 			return task;
 		}
 	}
+	printk_deferred("SKDEBUG: Finished picking without finding any task\n");
 	return NULL;
 }
 
@@ -129,6 +144,7 @@ static void set_curr_task_dummy(struct rq *rq)
 
 static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 {
+	printk_deferred("SKDEBUD: New tick occuring with task %lf as curr\n", (long)curr->pid);
 	int i;
 	struct list_head *dummy_rq = &rq->dummy.p131;
 	struct sched_dummy_entity *entity;
@@ -138,18 +154,15 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 		list_for_each_entry(entity, dummy_rq + i, run_list)
 		{
 			task = dummy_task_of(entity);
-			if(task != rq->curr)
+			task->dummy_se.age++;
+			if(task->dummy_se.age >= DUMMY_AGE_THRESHOLD)
 			{
-				task->dummy_se.age++;
-				if(task->dummy_se.age >= DUMMY_AGE_THRESHOLD)
+				task->dummy_se.age = 0;
+				int prio = task->prio;
+				if(prio > FIRST_PRIORITY)
 				{
-					task->dummy_se.age = 0;
-					int prio = task->prio;
-					if(prio > FIRST_PRIORITY)
-					{
-						task->prio = prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE - 1;
-						reschedule(rq, task);
-					}
+					task->prio = prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE - 1;
+					reschedule(rq, task);
 				}
 			}
 		}
@@ -159,6 +172,7 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 		reschedule(rq, curr);
 		resched_curr(rq);
 	}
+	printk_deferred("SKDEBUG: Finished tick with task %lf as curr\n", (long)curr->pid);
 }
 
 static void switched_from_dummy(struct rq *rq, struct task_struct *p)
@@ -171,11 +185,13 @@ static void switched_to_dummy(struct rq *rq, struct task_struct *p)
 
 static void prio_changed_dummy(struct rq*rq, struct task_struct *p, int oldprio)
 {
+	printk_deferred("SKDEBUG: Changing prio for task %lf\n", (long)p->pid);
 	if(rq->curr->prio > p->prio)
 	{
 		reschedule(rq, rq->curr);
 		resched_curr(rq);
 	}
+	printk_deferred("SKDEBUG: Finished changing prio for task %lf\n", (long)p->pid);
 }
 
 static unsigned int get_rr_interval_dummy(struct rq* rq, struct task_struct *p)
