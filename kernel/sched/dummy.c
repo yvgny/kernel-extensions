@@ -53,20 +53,20 @@ static inline struct task_struct *dummy_task_of(struct sched_dummy_entity *dummy
 
 static inline void _enqueue_task_dummy(struct rq *rq, struct task_struct *p)
 {
-	printk_deferred("SKDEBUG: Enqueuing task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Enqueuing task %ld\n", (long)p->pid);
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
 	int priority = p->prio - FIRST_PRIORITY;
 	struct list_head *queue = &rq->dummy.p131 + priority;
 	list_add_tail(&dummy_se->run_list, queue);
-	printk_deferred("SKDEBUG: Finished enqueuing task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Finished enqueuing task %ld\n", (long)p->pid);
 }
 
 static inline void _dequeue_task_dummy(struct task_struct *p)
 {
-	printk_deferred("SKDEBUG: Dequeuing task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Dequeuing task %ld\n", (long)p->pid);
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
 	list_del_init(&dummy_se->run_list);
-	printk_deferred("SKDEBUG: Finished dequeuing task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Finished dequeuing task %ld\n", (long)p->pid);
 }
 
 /*
@@ -97,20 +97,20 @@ static void reschedule(struct rq *rq, struct task_struct *p)
 
 static void yield_task_dummy(struct rq *rq)
 {
-	printk_deferred("SKDEBUG: Yielding task %lf\n", (long)rq->curr->pid);
+	printk_deferred("SKDEBUG: Yielding task %ld\n", (long)rq->curr->pid);
 	reschedule(rq, rq->curr);
-	resched_curr(rq);
-	printk_deferred("SKDEBUG: Finished yielding task %lf\n", (long)rq->curr->pid);
+	resched_curr(rq);	
+	printk_deferred("SKDEBUG: Finished yielding task\n");
 }
 
 static void check_preempt_curr_dummy(struct rq *rq, struct task_struct *p, int flags)
 {
-	printk_deferred("SKDEBUG: Checking preemption for task %lf replaced by %lf\n", (long)rq->curr->pid, (long)p->pid);
+	printk_deferred("SKDEBUG: Checking preemption for task %ld replaced by %ld\n", (long)rq->curr->pid, (long)p->pid);
 	if(rq->curr->prio > p->prio) {
 		reschedule(rq, rq->curr);
 		resched_curr(rq);
 	}
-	printk_deferred("SKDEBUG: Finished checking preemption %lf, %lf\n", (long)rq->curr->pid, (long)p->pid);
+	printk_deferred("SKDEBUG: Finished checking preemption\n");
 }
 
 static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struct* prev, struct rq_flags* rf)
@@ -128,7 +128,7 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 	                put_prev_task(rq, prev);
 			task = dummy_task_of(next);
 			task->prio = task->static_prio;
-			printk_deferred("SKDEBUG: Finished picking and returning task %lf\n", (long)task->pid);
+			printk_deferred("SKDEBUG: Finished picking and returning task %ld\n", (long)task->pid);
 			return task;
 		}
 	}
@@ -146,7 +146,7 @@ static void set_curr_task_dummy(struct rq *rq)
 
 static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 {
-	printk_deferred("SKDEBUD: New tick occuring with task %lf as curr\n", (long)curr->pid);
+	printk_deferred("SKDEBUD: New tick occuring with task %ld as curr\n", (long)curr->pid);
 	int i;
 	struct list_head *dummy_rq = &rq->dummy.p131;
 	struct sched_dummy_entity *entity;
@@ -177,7 +177,7 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 		reschedule(rq, curr);
 		resched_curr(rq);
 	}
-	printk_deferred("SKDEBUG: Finished tick with task %lf as curr\n", (long)curr->pid);
+	printk_deferred("SKDEBUG: Finished tick with task %ld as curr\n", (long)curr->pid);
 }
 
 static void switched_from_dummy(struct rq *rq, struct task_struct *p)
@@ -190,13 +190,13 @@ static void switched_to_dummy(struct rq *rq, struct task_struct *p)
 
 static void prio_changed_dummy(struct rq*rq, struct task_struct *p, int oldprio)
 {
-	printk_deferred("SKDEBUG: Changing prio for task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Changing prio for task %ld\n", (long)p->pid);
 	if(rq->curr->prio > p->prio)
 	{
 		reschedule(rq, rq->curr);
 		resched_curr(rq);
 	}
-	printk_deferred("SKDEBUG: Finished changing prio for task %lf\n", (long)p->pid);
+	printk_deferred("SKDEBUG: Finished changing prio for task %ld\n", (long)p->pid);
 }
 
 static unsigned int get_rr_interval_dummy(struct rq* rq, struct task_struct *p)
