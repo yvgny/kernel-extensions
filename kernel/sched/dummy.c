@@ -87,6 +87,8 @@ static void dequeue_task_dummy(struct rq *rq, struct task_struct *p, int flags)
 
 static void reschedule(struct rq *rq, struct task_struct *p)
 {
+    printk_deferred("SKDEBUD: p is : %p\n", p);
+    printk_deferred("SKDEBUD: rq is : %p\n", rq);
 	printk_deferred("SKDEBUG: Rescheduling task %lf\n", (long)p->pid);
 	dequeue_task_dummy(rq, p, 0);
 	enqueue_task_dummy(rq, p, 0);
@@ -154,6 +156,9 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 		list_for_each_entry(entity, dummy_rq + i, run_list)
 		{
 			task = dummy_task_of(entity);
+            printk_deferred("SKDEBUD: Task is : %p\n", task);
+            printk_deferred("SKDEBUD: Task.dummy_se is : %p\n", task->dummy_se);
+
 			task->dummy_se.age++;
 			if(task->dummy_se.age >= DUMMY_AGE_THRESHOLD)
 			{
