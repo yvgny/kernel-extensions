@@ -67,6 +67,7 @@ static inline void _dequeue_task_dummy(struct task_struct *p)
 {
 	BUG_ON(p == NULL);
 	struct sched_dummy_entity *dummy_se = &p->dummy_se;
+	dummy_se->time_slice = 0;
 	BUG_ON(dummy_se == NULL);
 	list_del_init(&dummy_se->run_list);
 }
@@ -136,6 +137,7 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 			task = dummy_task_of(next);
 			BUG_ON(task == NULL);
 			task->prio = task->static_prio;
+			task->dummy_se.age = 0;
 			return task;
 		}
 	}
@@ -160,10 +162,11 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 	struct sched_dummy_entity *entity;
 	struct sched_dummy_entity *temp_storage;
 	struct task_struct *task;
-	for(i = 0 ; i < NR_PRIORITIES ; i++)
+	for(i = curr->prio - FIRST_PRIORITY + 1 ; i < NR_PRIORITIES ; i++)
 	{
 		list_for_each_entry_safe(entity, temp_storage, dummy_rq + i, run_list)
 		{
+			printk_deferred("SKDEBUG : OH SHIT\n");
 			BUG_ON(entity == NULL);
 			task = dummy_task_of(entity);
 			BUG_ON(task == NULL);
@@ -171,10 +174,9 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 			if(task->dummy_se.age >= DUMMY_AGE_THRESHOLD)
 			{
 				task->dummy_se.age = 0;
-				int prio = task->prio;
-				if(prio > FIRST_PRIORITY)
+				if(task->prio > FIRST_PRIORITY)
 				{
-					task->prio = prio - FIRST_PRIORITY + FIRST_PRIORITY_NICE - 1;
+					task->prio--;
 					reschedule(rq, task);
 				}
 			}
