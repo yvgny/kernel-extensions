@@ -133,7 +133,7 @@ static struct task_struct *pick_next_task_dummy(struct rq *rq, struct task_struc
 		{
 			next = list_first_entry(&dummy_rq->p131 + i, struct sched_dummy_entity, run_list);
 			BUG_ON(next == NULL);
-	                put_prev_task(rq, prev);
+	        put_prev_task(rq, prev);
 			task = dummy_task_of(next);
 			BUG_ON(task == NULL);
 			task->prio = task->static_prio;
@@ -176,6 +176,8 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 				task->dummy_se.age = 0;
 				if(task->prio > FIRST_PRIORITY)
 				{
+					pid_t pid =  task_pid_nr(task);
+					printk_deferred("Process with PID %i gets is priority augmented due to ageeing", pid);
 					task->prio--;
 					reschedule(rq, task);
 				}
