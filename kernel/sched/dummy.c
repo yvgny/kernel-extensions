@@ -104,7 +104,7 @@ static void yield_task_dummy(struct rq *rq)
 	BUG_ON(rq == NULL);
 	BUG_ON(rq->curr == NULL);
 	reschedule(rq, rq->curr);
-	resched_curr(rq);	
+	resched_curr(rq);
 }
 
 static void check_preempt_curr_dummy(struct rq *rq, struct task_struct *p, int flags)
@@ -158,10 +158,11 @@ static void task_tick_dummy(struct rq *rq, struct task_struct *curr, int queued)
 	struct list_head *dummy_rq = &rq->dummy.p131;
 	BUG_ON(dummy_rq == NULL);
 	struct sched_dummy_entity *entity;
+	struct sched_dummy_entity *temp_storage;
 	struct task_struct *task;
 	for(i = 0 ; i < NR_PRIORITIES ; i++)
 	{
-		list_for_each_entry(entity, dummy_rq + i, run_list)
+		list_for_each_entry_safe(entity, temp_storage, dummy_rq + i, run_list)
 		{
 			BUG_ON(entity == NULL);
 			task = dummy_task_of(entity);
@@ -211,13 +212,13 @@ static unsigned int get_rr_interval_dummy(struct rq* rq, struct task_struct *p)
 }
 #ifdef CONFIG_SMP
 /*
- * SMP related functions	
+ * SMP related functions
  */
 
 static inline int select_task_rq_dummy(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
 	int new_cpu = smp_processor_id();
-	
+
 	return new_cpu; //set assigned CPU to zero
 }
 
@@ -239,7 +240,7 @@ const struct sched_class dummy_sched_class = {
 	.yield_task		= yield_task_dummy,
 
 	.check_preempt_curr	= check_preempt_curr_dummy,
-	
+
 	.pick_next_task		= pick_next_task_dummy,
 	.put_prev_task		= put_prev_task_dummy,
 
