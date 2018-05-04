@@ -125,3 +125,8 @@ all.config
 
 # Remove binary files
 run_tests
+
+#CLion
+CMakeLists.txt
+cmake-build-debug
+
