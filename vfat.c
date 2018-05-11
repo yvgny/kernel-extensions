@@ -3,10 +3,10 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
-#include <endian.h>
+#include <machine/endian.h>
 #include <err.h>
 #include <errno.h>
-#include <fuse.h>
+#include <osxfuse/fuse.h>
 #include <fcntl.h>
 #include <iconv.h>
 #include <stddef.h>
@@ -45,7 +45,39 @@ vfat_init(const char *dev)
     if (pread(vfat_info.fd, &s, sizeof(s), 0) != sizeof(s))
         err(1, "read super block");
 
-    /* XXX add your code here */
+    vfat_info.bytes_per_sector = s.bytes_per_sector;
+    vfat_info.sectors_per_cluster = s.sectors_per_cluster;
+    vfat_info.reserved_sectors = s.reserved_sectors;
+    if (s.fat_count == 2) {
+        err(1, "fat_count is 0");
+    } else if (s.fat_count != 2) {
+        warn("fat_count is generally 2 (see fat32 documentation)");
+    }
+    if(s.root_max_entries) {
+        err(1, "root_max_entries should be 0");
+    }
+    if(s.total_sectors_small) {
+        err(1, "total_sectors_small should be 0");
+    }
+
+    int media_info_condition1 = !(s.media_info == 0xF0 || 0xF8 <= s.media_info && s.media_info <= 0xFF);
+    // TODO doit-on instancier fat dans vfat_data ? si oui, comment ?
+    int media_info_condition2 = (vfat_info.fat[0] & 0xFF) != s.media_info;
+    if(media_info_condition1 || media_info_condition2) {
+        err(1, "media_info is not FAT32 compliant");
+    }
+    if(s.sectors_per_fat_small) {
+        err(1, "sectors_per_fat_small should be 0");
+    }
+    // TODO : doit on vérifier sectors_per_track (est-ce que notre média est partitioné)
+    if(!s.total_sectors) {
+        err(1, "total_sectors should not be 0");
+    }
+    if(!s.sectors_per_fat) {
+        err(1,"sectors_per_fat cannot be 0");
+    }
+    vfat_info.fat_size = s.sectors_per_fat;
+    // TODO continuer ici avec "version"
     vfat_info.root_inode.st_ino = le32toh(s.root_cluster);
     vfat_info.root_inode.st_mode = 0555 | S_IFDIR;
     vfat_info.root_inode.st_nlink = 1;
