@@ -76,8 +76,37 @@ vfat_init(const char *dev)
     if(!s.sectors_per_fat) {
         err(1,"sectors_per_fat cannot be 0");
     }
+    vfat_info.sectors_per_fat = s.sectors_per_fat;
     vfat_info.fat_size = s.sectors_per_fat;
-    // TODO continuer ici avec "version"
+    if(!s.version) {
+        err(1, "version should be 0:0");
+    }
+    vfat_info.cluster_begin_offset = s.root_cluster;
+    if(s.backup_sector != 6) {
+        warn("backup sector is usually at position 6");
+    }
+    for (int i = 0; i < 12; ++i) {
+        if(s.reserved2[i]) {
+            err(1, "reserved should always be 0");
+        }
+    }
+    uint32_t used_sectors = s.reserved_sectors + (s.fat_count * s.sectors_per_fat);
+    if(s.total_sectors < used_sectors) {
+        err(1, "filesystem is corrupted !");
+    }
+    uint32_t DataSec = s.total_sectors - used_sectors;
+    uint32_t CountOfCluster = DataSec / s.sectors_per_cluster;
+    if(CountOfCluster < 65525) {
+        err(1, "filesystem is not FAT32");
+    }
+    vfat_info.fat_entries = CountOfCluster;
+    vfat_info.fat_begin_offset = s.reserved_sectors;
+    vfat_info.fat = mmap_file(vfat_info.fd, vfat_info.fat_begin_offset * s.bytes_per_sector, vfat_info.fat_size);
+    if (NULL == vfat_info.fat) {
+        err(1, "unable the load FAT in memory");
+    }
+
+
     vfat_info.root_inode.st_ino = le32toh(s.root_cluster);
     vfat_info.root_inode.st_mode = 0555 | S_IFDIR;
     vfat_info.root_inode.st_nlink = 1;
@@ -93,7 +122,10 @@ vfat_init(const char *dev)
 int vfat_next_cluster(uint32_t cluster_num)
 {
     /* TODO: Read FAT to actually get the next cluster */
-    return 0xffffff; // no next cluster
+    if(cluster_num >= vfat_info.fat_entries){
+        return -1;
+    }
+    return vfat_info.fat[cluster_num];
 }
 
 int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata)
