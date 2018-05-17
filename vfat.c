@@ -2,18 +2,13 @@
 #define FUSE_USE_VERSION 26
 #define _GNU_SOURCE
 
-#include <assert.h>
-#include <machine/endian.h>
+#include <endian.h>
 #include <err.h>
 #include <errno.h>
-#include <osxfuse/fuse.h>
-#include <fcntl.h>
+#include <osxfuse/fuse.h>"
 #include <iconv.h>
-#include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include "vfat.h"
@@ -23,12 +18,11 @@
 #define DEBUG_PRINT(...) printf(__VA_ARGS)
 
 iconv_t iconv_utf16;
-char* DEBUGFS_PATH = "/.debug";
+char *DEBUGFS_PATH = "/.debug";
 
 
 static void
-vfat_init(const char *dev)
-{
+vfat_init(const char *dev) {
     struct fat_boot_header s;
 
     iconv_utf16 = iconv_open("utf-8", "utf-16"); // from utf-16 to utf-8
@@ -48,55 +42,54 @@ vfat_init(const char *dev)
     vfat_info.bytes_per_sector = s.bytes_per_sector;
     vfat_info.sectors_per_cluster = s.sectors_per_cluster;
     vfat_info.reserved_sectors = s.reserved_sectors;
-    if (s.fat_count == 2) {
-        err(1, "fat_count is 0");
-    } else if (s.fat_count != 2) {
-        warn("fat_count is generally 2 (see fat32 documentation)");
+    if (s.fat_count != 2) {
+        err(1, "fat_count should be 2 (see presentation)");
     }
-    if(s.root_max_entries) {
+    vfat_info.fat_count = s.fat_count;
+    if (s.root_max_entries) {
         err(1, "root_max_entries should be 0");
     }
-    if(s.total_sectors_small) {
+    if (s.total_sectors_small) {
         err(1, "total_sectors_small should be 0");
     }
 
-    int media_info_condition1 = !(s.media_info == 0xF0 || 0xF8 <= s.media_info && s.media_info <= 0xFF);
+    int media_info_condition1 = !(s.media_info == 0xF0 || (0xF8 <= s.media_info && s.media_info <= 0xFF));
     // TODO doit-on instancier fat dans vfat_data ? si oui, comment ?
     int media_info_condition2 = (vfat_info.fat[0] & 0xFF) != s.media_info;
-    if(media_info_condition1 || media_info_condition2) {
+    if (media_info_condition1 || media_info_condition2) {
         err(1, "media_info is not FAT32 compliant");
     }
-    if(s.sectors_per_fat_small) {
+    if (s.sectors_per_fat_small) {
         err(1, "sectors_per_fat_small should be 0");
     }
     // TODO : doit on vérifier sectors_per_track (est-ce que notre média est partitioné)
-    if(!s.total_sectors) {
+    if (!s.total_sectors) {
         err(1, "total_sectors should not be 0");
     }
-    if(!s.sectors_per_fat) {
-        err(1,"sectors_per_fat cannot be 0");
+    if (!s.sectors_per_fat) {
+        err(1, "sectors_per_fat cannot be 0");
     }
     vfat_info.sectors_per_fat = s.sectors_per_fat;
     vfat_info.fat_size = s.sectors_per_fat;
-    if(!s.version) {
+    if (!s.version) {
         err(1, "version should be 0:0");
     }
     vfat_info.cluster_begin_offset = s.root_cluster;
-    if(s.backup_sector != 6) {
+    if (s.backup_sector != 6) {
         warn("backup sector is usually at position 6");
     }
     for (int i = 0; i < 12; ++i) {
-        if(s.reserved2[i]) {
+        if (s.reserved2[i]) {
             err(1, "reserved should always be 0");
         }
     }
     uint32_t used_sectors = s.reserved_sectors + (s.fat_count * s.sectors_per_fat);
-    if(s.total_sectors < used_sectors) {
+    if (s.total_sectors < used_sectors) {
         err(1, "filesystem is corrupted !");
     }
     uint32_t DataSec = s.total_sectors - used_sectors;
     uint32_t CountOfCluster = DataSec / s.sectors_per_cluster;
-    if(CountOfCluster < 65525) {
+    if (CountOfCluster < 65525) {
         err(1, "filesystem is not FAT32");
     }
     vfat_info.fat_entries = CountOfCluster;
@@ -106,7 +99,7 @@ vfat_init(const char *dev)
         err(1, "unable the load FAT in memory");
     }
 
-
+    vfat_info.first_data_sector = vfat_info.reserved_sectors + (vfat_info.fat_count * vfat_info.fat_size);
     vfat_info.root_inode.st_ino = le32toh(s.root_cluster);
     vfat_info.root_inode.st_mode = 0555 | S_IFDIR;
     vfat_info.root_inode.st_nlink = 1;
@@ -118,24 +111,51 @@ vfat_init(const char *dev)
 }
 
 /* TODO: XXX add your code here */
-
-int vfat_next_cluster(uint32_t cluster_num)
-{
+int vfat_next_cluster(uint32_t cluster_num) {
     /* TODO: Read FAT to actually get the next cluster */
-    if(cluster_num >= vfat_info.fat_entries){
+    if (cluster_num >= vfat_info.fat_entries) {
         return -1;
     }
     return vfat_info.fat[cluster_num];
 }
 
-int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata)
-{
+int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata) {
     struct stat st; // we can reuse same stat entry over and over again
-
+    off_t err = 0;
     memset(&st, 0, sizeof(st));
     st.st_uid = vfat_info.mount_uid;
     st.st_gid = vfat_info.mount_gid;
     st.st_nlink = 1;
+
+    uint32_t cluster_number = first_cluster;
+    size_t first_sector_of_cluster;
+    while (cluster_number != 0x0FFFFFFF) {
+        first_sector_of_cluster = ((first_cluster - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
+        size_t entry_count = vfat_info.bytes_per_sector / sizeof(struct fat32_direntry);
+        struct fat32_direntry sector[entry_count];
+        for (size_t sector_number = first_sector_of_cluster;
+             sector_number < first_sector_of_cluster + vfat_info.sectors_per_cluster; ++sector_number) {
+
+
+            err = lseek(vfat_info.fd, sector_number * vfat_info.bytes_per_sector, SEEK_SET);
+            if (err < 0) {
+                return -1;
+            }
+
+            ssize_t byte_read = read(vfat_info.fd, sector, vfat_info.bytes_per_sector);
+            if (byte_read != vfat_info.bytes_per_sector) {
+                return -1;
+            }
+
+            struct fat32_direntry current;
+            for (size_t entry = 0; entry < entry_count; ++entry) {
+                current = sector[entry];
+                // todo
+            }
+        }
+
+        cluster_number = vfat_next_cluster(cluster_number);
+    }
 
     /* XXX add your code here */
     return 0;
@@ -144,16 +164,15 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
 // Used by vfat_search_entry()
 struct vfat_search_data {
-    const char*  name;
-    int          found;
-    struct stat* st;
+    const char *name;
+    int found;
+    struct stat *st;
 };
 
 
 // You can use this in vfat_resolve as a callback function for vfat_readdir
 // This way you can get the struct stat of the subdirectory/file.
-int vfat_search_entry(void *data, const char *name, const struct stat *st, off_t offs)
-{
+int vfat_search_entry(void *data, const char *name, const struct stat *st, off_t offs) {
     struct vfat_search_data *sd = data;
 
     if (strcmp(sd->name, name) != 0) return 0;
@@ -170,8 +189,7 @@ int vfat_search_entry(void *data, const char *name, const struct stat *st, off_t
  * @st file stat structure
  * @returns 0 iff operation completed succesfully -errno on error
 */
-int vfat_resolve(const char *path, struct stat *st)
-{
+int vfat_resolve(const char *path, struct stat *st) {
     /* TODO: Add your code here.
         You should tokenize the path (by slash separator) and then
         for each token search the directory for the file/dir with that name.
@@ -188,8 +206,7 @@ int vfat_resolve(const char *path, struct stat *st)
 }
 
 // Get file attributes
-int vfat_fuse_getattr(const char *path, struct stat *st)
-{
+int vfat_fuse_getattr(const char *path, struct stat *st) {
     if (strncmp(path, DEBUGFS_PATH, strlen(DEBUGFS_PATH)) == 0) {
         // This is handled by debug virtual filesystem
         return debugfs_fuse_getattr(path + strlen(DEBUGFS_PATH), st);
@@ -200,8 +217,7 @@ int vfat_fuse_getattr(const char *path, struct stat *st)
 }
 
 // Extended attributes useful for debugging
-int vfat_fuse_getxattr(const char *path, const char* name, char* buf, size_t size)
-{
+int vfat_fuse_getxattr(const char *path, const char *name, char *buf, size_t size) {
     struct stat st;
     int ret = vfat_resolve(path, &st);
     if (ret != 0) return ret;
@@ -220,8 +236,7 @@ int vfat_fuse_getxattr(const char *path, const char* name, char* buf, size_t siz
 
 int vfat_fuse_readdir(
         const char *path, void *callback_data,
-        fuse_fill_dir_t callback, off_t unused_offs, struct fuse_file_info *unused_fi)
-{
+        fuse_fill_dir_t callback, off_t unused_offs, struct fuse_file_info *unused_fi) {
     if (strncmp(path, DEBUGFS_PATH, strlen(DEBUGFS_PATH)) == 0) {
         // This is handled by debug virtual filesystem
         return debugfs_fuse_readdir(path + strlen(DEBUGFS_PATH), callback_data, callback, unused_offs, unused_fi);
@@ -233,8 +248,7 @@ int vfat_fuse_readdir(
 
 int vfat_fuse_read(
         const char *path, char *buf, size_t size, off_t offs,
-        struct fuse_file_info *unused)
-{
+        struct fuse_file_info *unused) {
     if (strncmp(path, DEBUGFS_PATH, strlen(DEBUGFS_PATH)) == 0) {
         // This is handled by debug virtual filesystem
         return debugfs_fuse_read(path + strlen(DEBUGFS_PATH), buf, size, offs, unused);
@@ -245,8 +259,7 @@ int vfat_fuse_read(
 }
 
 ////////////// No need to modify anything below this point
-int vfat_opt_args(void *data, const char *args, int key, struct fuse_args *oargs)
-{
+int vfat_opt_args(void *data, const char *args, int key, struct fuse_args *oargs) {
     if (key == FUSE_OPT_KEY_NONOPT && !vfat_info.dev) {
         vfat_info.dev = strdup(args);
         return (0);
@@ -255,14 +268,13 @@ int vfat_opt_args(void *data, const char *args, int key, struct fuse_args *oargs
 }
 
 struct fuse_operations vfat_available_ops = {
-    .getattr = vfat_fuse_getattr,
-    .getxattr = vfat_fuse_getxattr,
-    .readdir = vfat_fuse_readdir,
-    .read = vfat_fuse_read,
+        .getattr = vfat_fuse_getattr,
+        .getxattr = vfat_fuse_getxattr,
+        .readdir = vfat_fuse_readdir,
+        .read = vfat_fuse_read,
 };
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
     fuse_opt_parse(&args, NULL, NULL, vfat_opt_args);

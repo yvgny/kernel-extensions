@@ -88,10 +88,11 @@ struct fat32_direntry_long {
 struct vfat_data {
     const char* dev;
     int         fd;
-    uid_t mount_uid;
-    gid_t mount_gid;
-    time_t mount_time;
-    /* TODO: add your code here */
+    uid_t       mount_uid;
+    gid_t       mount_gid;
+    time_t      mount_time;
+    uint8_t     fat_count;
+    size_t      first_data_sector;
     size_t      fat_entries;
     off_t       cluster_begin_offset;
     size_t      direntry_per_cluster;
