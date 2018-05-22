@@ -6,7 +6,7 @@ LDFLAGS=-lfuse
 all:vfat
 
 vfat: vfat.o util.o debugfs.o
-	$(CC) $(LDFLAGS) $^ -o $@
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 %.o: %.cc *.h
 	$(CC) $(CFLAGS) -c $(INCL) $< -o $@
