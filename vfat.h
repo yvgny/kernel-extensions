@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#define VFAT_MAX_PATH_LEN   255
+
 // Boot sector
 struct fat_boot_header {
     /* General */
