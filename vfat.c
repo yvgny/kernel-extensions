@@ -96,7 +96,12 @@ vfat_init(const char *dev) {
 
     vfat_info.first_data_sector = vfat_info.reserved_sectors + (vfat_info.fat_count * vfat_info.fat_size);
     vfat_info.root_inode.st_ino = le32toh(s.root_cluster);
-    vfat_info.root_inode.st_mode = 0555 | S_IFDIR;
+    vfat_info.root_inode.st_dev = 0;
+    vfat_info.root_inode.st_rdev = 0;
+    vfat_info.root_inode.st_blksize = 0;
+    vfat_info.root_inode.st_blocks = 1;
+    // vfat_info.root_inode.st_mode =  S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH;
+    vfat_info.root_inode.st_mode =  S_IFDIR | 0555;
     vfat_info.root_inode.st_nlink = 1;
     vfat_info.root_inode.st_uid = vfat_info.mount_uid;
     vfat_info.root_inode.st_gid = vfat_info.mount_gid;
@@ -160,11 +165,16 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
             err = lseek(vfat_info.fd, sector_number * vfat_info.bytes_per_sector, SEEK_SET);
             if (err < 0) {
+                printf("RETURNINg 4");
+                fflush(stdout);
+
                 return -1;
             }
 
             ssize_t byte_read = read(vfat_info.fd, sector, vfat_info.bytes_per_sector);
             if (byte_read != vfat_info.bytes_per_sector) {
+                printf("RETURNINg 3");
+                fflush(stdout);
                 return -1;
             }
 
@@ -181,6 +191,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     struct fat32_direntry_long *currentLong = &current;
                     if (long_name_counter > 0) {
                         if (currentLong->seq != --long_name_counter) {
+                            printf("RETURNINg 2");
+                            fflush(stdout);
                             return -1;
                         }
                         char first_entry_name[13];
@@ -189,6 +201,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                         continue;
                     } else {
                         if ((currentLong->seq >> 4) != 4) {
+                            printf("RETURNINg 1");
+                            fflush(stdout);
                             return -1;
                         }
                         long_name_counter = currentLong->seq & 0x0F;
@@ -241,10 +255,11 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
         cluster_number = vfat_next_cluster(cluster_number);
         if (cluster_number < 0) {
+            printf("RETURNINg 5");
+            fflush(stdout);
             return cluster_number;
         }
     }
-
     return 0;
 }
 
@@ -334,6 +349,7 @@ int vfat_resolve(const char *path, struct stat *st) {
     if (strcmp("/", path) == 0) {
         *st = vfat_info.root_inode;
         res = 0;
+        return res;
     }
 
     size_t path_name_size = strlen(path);
@@ -348,8 +364,12 @@ int vfat_resolve(const char *path, struct stat *st) {
 
     token = strtok(path_copy, "/");
     uint32_t curr_inode = vfat_info.root_inode.st_ino;
+    struct vfat_search_data sd;
+    printf("Here in\n");
+    fflush(stdout);
     while (token != NULL) {
-        struct vfat_search_data sd;
+        printf("Here\n");
+        fflush(stdout);
         sd.st = malloc(sizeof(struct stat));
         sd.name = token;
         res = vfat_readdir(curr_inode, vfat_search_entry, &sd);
@@ -359,6 +379,9 @@ int vfat_resolve(const char *path, struct stat *st) {
         curr_inode = sd.st->st_ino;
         token = strtok(NULL, "/");
     }
+    printf("Here out\n");
+    fflush(stdout);
+    *st = *sd.st;
 
     return 0;
 }
@@ -370,6 +393,8 @@ int vfat_fuse_getattr(const char *path, struct stat *st) {
         return debugfs_fuse_getattr(path + strlen(DEBUGFS_PATH), st);
     } else {
         // Normal file
+        printf("Called by getattr\n");
+        fflush(stdout);
         return vfat_resolve(path, st);
     }
 }
@@ -377,6 +402,8 @@ int vfat_fuse_getattr(const char *path, struct stat *st) {
 // Extended attributes useful for debugging
 int vfat_fuse_getxattr(const char *path, const char *name, char *buf, size_t size) {
     struct stat st;
+    printf("Called by getxattr\n");
+    fflush(stdout);
     int ret = vfat_resolve(path, &st);
     if (ret != 0) return ret;
     if (strcmp(name, "debug.cluster") != 0) return -ENODATA;
@@ -402,8 +429,6 @@ int vfat_fuse_readdir(
     struct stat st;
     vfat_resolve(path, &st);
 
-    st = vfat_info.root_inode;
-
     return vfat_readdir(st.st_ino, callback, callback_data);
 }
 
@@ -415,6 +440,8 @@ int vfat_fuse_read(
         return debugfs_fuse_read(path + strlen(DEBUGFS_PATH), buf, size, offs, unused);
     }
     struct stat st;
+    printf("Called by read\n");
+    fflush(stdout);
     vfat_resolve(path, &st);
 
     return vfat_read(buf, size, offs, &st);
@@ -451,5 +478,6 @@ int main(int argc, char **argv) {
         errx(1, "missing file system parameter");
 
     vfat_init(vfat_info.dev);
+    vfat_readdir(2, test, NULL);
     return (fuse_main(args.argc, args.argv, &vfat_available_ops, NULL));
 }
