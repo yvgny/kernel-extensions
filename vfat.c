@@ -107,10 +107,33 @@ vfat_init(const char *dev) {
 
 /* TODO: XXX add your code here */
 int vfat_next_cluster(uint32_t cluster_num) {
+    cluster_num &= 0x0FFFFFFF;
     if (cluster_num >= vfat_info.fat_entries) {
         return -1;
     }
     return vfat_info.fat[cluster_num];
+}
+
+int construct_name(struct fat32_direntry_long *direntry, char *buff) {
+    int size = 0;
+
+    for (int i = 0; i < 5; ++i) {
+        if ((buff[size++] = (char) direntry->name1[i]) == '\0') {
+            return size;
+        }
+    }
+    for (int i = 0; i < 6; ++i) {
+        if ((buff[size++] = (char) direntry->name2[i]) == '\0') {
+            return size;
+        }
+    }
+    for (int i = 0; i < 2; ++i) {
+        if ((buff[size++] = (char) direntry->name3[i]) == '\0') {
+            return size;
+        }
+    }
+
+    return size;
 }
 
 int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata) {
@@ -126,6 +149,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
     off_t off = 0;
     int is_finished = 0;
 
+    char *fullname;
+    int long_name_counter = 0;
     while (cluster_number != 0x0FFFFFFF && !is_finished) {
         first_sector_of_cluster = ((first_cluster - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
         size_t entry_count = vfat_info.bytes_per_sector / sizeof(struct fat32_direntry);
@@ -153,8 +178,55 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 else if ((current.nameext[0] & 0xFF) == 0x00) {
                     return 0;
                 } else if ((current.nameext[11] & 0xFF) == 0x0F) {
-                    continue;
+                    struct fat32_direntry_long *currentLong = &current;
+                    if (long_name_counter > 0) {
+                        if (currentLong->seq != --long_name_counter) {
+                            return -1;
+                        }
+                        char first_entry_name[13];
+                        int first_entry_name_size = construct_name(currentLong, first_entry_name);
+                        strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
+                        continue;
+                    } else {
+                        if ((currentLong->seq >> 4) != 4) {
+                            return -1;
+                        }
+                        long_name_counter = currentLong->seq & 0x0F;
+                        char first_entry_name[13];
+                        int first_entry_name_size = construct_name(currentLong, first_entry_name);
+                        fullname = calloc(long_name_counter * 13 + first_entry_name_size, sizeof(char));
+                        strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
+                        continue;
+                    }
+                } else {
+                    // Name parsing
+                    int finished = 0;
+                    for (int i = 7; i >= 0 && !finished; i--) {
+                        if (isspace(current.name[i])) {
+                            current.name[i] = '\0';
+                        } else {
+                            finished = 1;
+                        }
+                    }
+                    finished = 0;
+                    for (int i = 2; i >= 0 && !finished; i--) {
+                        if (isspace(current.ext[i])) {
+                            current.ext[i] = '\0';
+                        } else {
+                            finished = 1;
+                        }
+                    }
+
+                    size_t nameLen = strnlen(current.name, 8);
+                    size_t extLen = strnlen(current.ext, 3);
+                    fullname = calloc(nameLen + extLen + 2, sizeof(char));
+
+                    strncpy(fullname, current.name, nameLen);
+                    strncpy(&fullname[nameLen + 1], current.ext, extLen);
+                    fullname[nameLen] = '.';
+                    fullname[nameLen + extLen + 1] = '\0';
                 }
+                long_name_counter = 0;
 
                 st.st_size = current.size;
                 st.st_ino = (((uint32_t) current.cluster_hi) << 16) | current.cluster_lo;
@@ -162,35 +234,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 // Attribute parsing
                 st.st_mode = ((current.attr >> 4) & 1) ? S_IFDIR : S_IFREG;
 
-                // Name parsing
-                int finished = 0;
-                for (int i = 7; i >= 0 && !finished; i--) {
-                    if (isspace(current.name[i])) {
-                        current.name[i] = '\0';
-                    } else {
-                        finished = 1;
-                    }
-                }
-                finished = 0;
-                for (int i = 2; i >= 0 && !finished; i--) {
-                    if (isspace(current.ext[i])) {
-                        current.ext[i] = '\0';
-                    } else {
-                        finished = 1;
-                    }
-                }
-
-                size_t nameLen = strnlen(current.name, 8);
-                size_t extLen = strnlen(current.ext, 3);
-                char fullname[nameLen + extLen + 2];
-
-                strncpy(fullname, current.name, nameLen);
-                strncpy(&fullname[nameLen + 1], current.ext, extLen);
-                fullname[nameLen] = '.';
-                fullname[nameLen + extLen + 1] = '\0';
-
-
                 is_finished = callback(callbackdata, fullname, &st, off++);
+                free(fullname);
             }
         }
 
@@ -303,7 +348,7 @@ int vfat_resolve(const char *path, struct stat *st) {
 
     token = strtok(path_copy, "/");
     uint32_t curr_inode = vfat_info.root_inode.st_ino;
-    while( token != NULL ) {
+    while (token != NULL) {
         struct vfat_search_data sd;
         sd.st = malloc(sizeof(struct stat));
         sd.name = token;
