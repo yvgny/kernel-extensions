@@ -8,6 +8,16 @@
 
 #define VFAT_MAX_PATH_LEN   255
 
+#define ATTR_READ_ONLY 0x01
+#define ATTR_HIDDEN 0x02
+#define ATTR_SYSTEM 0x04
+#define ATTR_VOLUME_ID 0x08
+#define ATTR_DIRECTORY 0x10
+#define ATTR_ARCHIVE 0x20
+#define VFAT_ATTR_LFN 0xf
+#define LAST_LONG_ENTRY 0x40
+#define ATTR_LONG_NAME (ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID)
+
 // Boot sector
 struct fat_boot_header {
     /* General */
