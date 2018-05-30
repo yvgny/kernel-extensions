@@ -101,7 +101,7 @@ vfat_init(const char *dev) {
     vfat_info.root_inode.st_blksize = 0;
     vfat_info.root_inode.st_blocks = 1;
     // vfat_info.root_inode.st_mode =  S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH;
-    vfat_info.root_inode.st_mode =  S_IFDIR | 0555;
+    vfat_info.root_inode.st_mode = S_IFDIR | 0555;
     vfat_info.root_inode.st_nlink = 1;
     vfat_info.root_inode.st_uid = vfat_info.mount_uid;
     vfat_info.root_inode.st_gid = vfat_info.mount_gid;
@@ -248,6 +248,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 // Attribute parsing
                 st.st_mode = ((current.attr >> 4) & 1) ? S_IFDIR : S_IFREG;
 
+                printf("readddir add %s\n", fullname);
+                fflush(stdout);
                 is_finished = callback(callbackdata, fullname, &st, off++);
                 free(fullname);
             }
@@ -428,8 +430,9 @@ int vfat_fuse_readdir(
     }
     struct stat st;
     vfat_resolve(path, &st);
-
-    return vfat_readdir(st.st_ino, callback, callback_data);
+    int val = vfat_readdir(st.st_ino, callback, callback_data);
+    printf("vfat readdir returns %d\n", val);
+    return val;
 }
 
 int vfat_fuse_read(
@@ -464,7 +467,8 @@ struct fuse_operations vfat_available_ops = {
 };
 
 int test(void *buf, const char *name, const struct stat *stbuf, off_t off) {
-    printf("\nName is : \"%s\"\n", name);
+    printf("Name is : \"%s\"\n", name);
+    printf("Inode is : \"%d\"\n\n", stbuf->st_ino);
     fflush(stdout);
     return 0;
 }
@@ -479,5 +483,14 @@ int main(int argc, char **argv) {
 
     vfat_init(vfat_info.dev);
     vfat_readdir(2, test, NULL);
+    char cha[70];
+    struct stat st;
+    st.st_ino = 5;
+    st.st_size = 20;
+    vfat_read(cha, 70, 0, &st);
+    for (int i = 0; i < 20; i++) {
+        printf("%c", cha[i]);
+    }
+    printf("\n");
     return (fuse_main(args.argc, args.argv, &vfat_available_ops, NULL));
 }
