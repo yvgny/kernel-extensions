@@ -301,6 +301,10 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 }
 
 
+                for (size_t i = 0; i < strlen(fullname); i++) {
+                    fullname[i] = (char) toupper(fullname[i]);
+                }
+
                 is_finished = callback(callbackdata, fullname, &st, 0);
                 free(fullname);
             }
