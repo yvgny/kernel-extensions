@@ -76,10 +76,6 @@ struct fat32_direntry {
     /*28*/  uint32_t size;
 } __attribute__ ((__packed__));
 
-#define VFAT_ATTR_DIR   0x10
-#define VFAT_ATTR_LFN   0xf
-#define VFAT_ATTR_INVAL (0x80|0x40|0x08)
-
 struct fat32_direntry_long {
     /* 0*/  uint8_t  seq;
     /* 1*/  uint16_t name1[5];
@@ -90,11 +86,6 @@ struct fat32_direntry_long {
     /*26*/  uint16_t reserved2;
     /*28*/  uint16_t name3[2];
 } __attribute__ ((__packed__));
-
-#define VFAT_LFN_SEQ_START      0x40
-#define VFAT_LFN_SEQ_DELETED    0x80
-#define VFAT_LFN_SEQ_MASK       0x3f
-
 
 // A kitchen sink for all important data about filesystem
 struct vfat_data {

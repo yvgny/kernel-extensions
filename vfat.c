@@ -133,6 +133,7 @@ int construct_name(struct fat32_direntry_long *direntry, char *buff) {
         }
     }
     for (int i = 0; i < 2; ++i) {
+
         if ((buff[size++] = (char) direntry->name3[i]) == '\0') {
             return size;
         }
@@ -183,9 +184,12 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
     int in_long_name = 0;
     int skip_long_name = 0;
     uint8_t checksum;
-    while (cluster_number != 0x0FFFFFFF && !is_finished) {
+    int our_counter = 0;
+    printf("IN WHILE\n");
+    fflush(stdout);
+    while (cluster_number < 0x0FFFFFF8 && !is_finished) {
 
-        first_sector_of_cluster = ((first_cluster - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
+        first_sector_of_cluster = ((cluster_number - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
         size_t entry_count = vfat_info.bytes_per_sector / sizeof(struct fat32_direntry);
         struct fat32_direntry sector[entry_count];
         for (size_t sector_number = first_sector_of_cluster;
@@ -193,11 +197,15 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
             err = lseek(vfat_info.fd, sector_number * vfat_info.bytes_per_sector, SEEK_SET);
             if (err < 0) {
+                printf("return 1\n");
+                fflush(stdout);
                 return -1;
             }
 
             ssize_t byte_read = read(vfat_info.fd, sector, vfat_info.bytes_per_sector);
             if (byte_read != vfat_info.bytes_per_sector) {
+                printf("Return 2\n");
+                fflush(stdout);
                 return -1;
             }
 
@@ -207,11 +215,13 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 current = sector[entry];
 
                 if ((current.nameext[0] & 0xFF) == 0x00) {
+                    printf("return 4\n");
+                    fflush(stdout);
                     return 0;
                 } else if ((current.nameext[0] & 0xFF) == 0xE5) continue;
                 else if ((current.attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
                     if (!skip_long_name) {
-                        struct fat32_direntry_long *currentLong = &current;
+                        struct fat32_direntry_long *currentLong = (struct fat32_direntry_long *) &current;
                         if (long_name_counter > 0) {
                             if (currentLong->seq != long_name_counter-- || currentLong->csum != checksum) {
                                 skip_long_name = 1;
@@ -219,6 +229,7 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                             }
                             char first_entry_name[13];
                             int first_entry_name_size = construct_name(currentLong, first_entry_name);
+
                             strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
                             continue;
                         } else {
@@ -226,6 +237,7 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                                 skip_long_name = 1;
                                 continue;
                             }
+                            our_counter ++;
                             checksum = currentLong->csum;
                             long_name_counter = (currentLong->seq & 0x0F) - 1;
                             in_long_name = 1;
@@ -265,6 +277,7 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     if ((current.attr & ATTR_DIRECTORY) != ATTR_DIRECTORY && extLen != 0) {
                         fullname[nameLen] = '.';
                     }
+
                     fullname[nameLen + extLen + 1] = '\0';
                 }
                 long_name_counter = 0;
@@ -299,16 +312,27 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     st.st_mode |= S_IWUSR | S_IWGRP | S_IWOTH;
                 }
 
+                printf("Inode is : %i and fullname is : %s\n", st.st_ino, fullname);
+                fflush(stdout);
+
                 is_finished = callback(callbackdata, fullname, &st, 0);
+                //printf("is finished = %d\n", is_finished);
+                //fflush(stdout);
                 free(fullname);
             }
         }
 
         cluster_number = vfat_next_cluster(cluster_number);
+        printf("Cluster number %i\n", cluster_number);
+        fflush(stdout);
         if (cluster_number < 0 && !is_finished) {
+            printf("Return 3\n");
+            fflush(stdout);
             return cluster_number;
         }
     }
+    printf("OUT OF WHILE\n");
+    fflush(stdout);
 
     return 0;
 }
