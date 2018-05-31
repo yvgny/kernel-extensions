@@ -150,7 +150,7 @@ uint8_t compute_checksum(const char nameext[11]) {
     return sum;
 }
 
-time_t create_time(uint16_t date, uint16_t time) {
+time_t create_time(uint16_t date, uint16_t time, uint16_t ms) {
     struct tm time_info;
     memset(&time_info, 0, sizeof(struct tm));
 
@@ -161,6 +161,7 @@ time_t create_time(uint16_t date, uint16_t time) {
     time_info.tm_sec = (time & 0x1F) * 2;
     time_info.tm_min = (time >> 5) & 0x03F;
     time_info.tm_hour = (time >> 11) + 1;
+    time_info.tm_hour += ms / 100;
 
     time_t result = mktime(&time_info);
 
@@ -184,6 +185,10 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
     uint8_t checksum;
     int our_counter = 0;
     while (cluster_number < 0x0FFFFFF8 && !is_finished) {
+        if (cluster_number == 0x0FFFFFF7) {
+            // bad cluster, should skip
+            continue;
+        }
 
         first_sector_of_cluster = ((cluster_number - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
         size_t entry_count = vfat_info.bytes_per_sector / sizeof(struct fat32_direntry);
@@ -209,6 +214,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 if ((current.nameext[0] & 0xFF) == 0x00) {
                     return 0;
                 } else if ((current.nameext[0] & 0xFF) == 0xE5) continue;
+                    // name[0] is invalid
+                else if (current.name[0] == 0x20) continue;
                 else if ((current.attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
                     if (!skip_long_name) {
                         struct fat32_direntry_long *currentLong = (struct fat32_direntry_long *) &current;
@@ -239,6 +246,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                         }
                     }
                 } else if ((current.attr & ATTR_HIDDEN) == ATTR_HIDDEN) continue;
+                    // Ignore volume ID as stated in spec
+                else if ((current.attr & ATTR_VOLUME_ID) == ATTR_VOLUME_ID) continue;
                 else if (!in_long_name || compute_checksum(current.nameext) != checksum) {
                     // Name parsing
                     int finished = 0;
@@ -284,9 +293,9 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
                 st.st_ino = (((uint32_t) current.cluster_hi) << 16) | current.cluster_lo;
 
-                st.st_atime = create_time(current.atime_date, 0);
-                st.st_ctime = create_time(current.ctime_date, current.ctime_time);
-                st.st_mtime = create_time(current.mtime_date, current.mtime_time);
+                st.st_atime = create_time(current.atime_date, 0, 0);
+                st.st_ctime = create_time(current.ctime_date, current.ctime_time, current.ctime_ms);
+                st.st_mtime = create_time(current.mtime_date, current.mtime_time, 0);
 
                 // Attribute parsing
                 if ((current.attr & ATTR_DIRECTORY) == ATTR_DIRECTORY) {
@@ -302,7 +311,7 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     st.st_mode |= S_IWUSR | S_IWGRP | S_IWOTH;
                 }
 
-                printf("File : %s has inode: %llu\n", fullname, st.st_ino);
+                printf("File : %s has attributes: %d\n", fullname, current.attr);
                 fflush(stdout);
                 is_finished = callback(callbackdata, fullname, &st, 0);
                 free(fullname);
