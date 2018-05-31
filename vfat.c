@@ -89,7 +89,8 @@ vfat_init(const char *dev) {
     }
     vfat_info.fat_entries = CountOfCluster;
     vfat_info.fat_begin_offset = s.reserved_sectors;
-    vfat_info.fat = mmap_file(vfat_info.fd, vfat_info.fat_begin_offset * s.bytes_per_sector, vfat_info.fat_size);
+    vfat_info.fat = mmap_file(vfat_info.fd, vfat_info.fat_begin_offset * s.bytes_per_sector,
+                              vfat_info.fat_size * s.bytes_per_sector);
     if (NULL == vfat_info.fat) {
         err(1, "unable the load FAT in memory");
     }
@@ -151,6 +152,7 @@ uint8_t compute_checksum(const char nameext[11]) {
 
 time_t create_time(uint16_t date, uint16_t time) {
     struct tm time_info;
+    memset(&time_info, 0, sizeof(struct tm));
 
     time_info.tm_mday = date & 0x01F;
     time_info.tm_mon = ((date >> 5) & 0x0F) - 1;
@@ -158,7 +160,7 @@ time_t create_time(uint16_t date, uint16_t time) {
 
     time_info.tm_sec = (time & 0x1F) * 2;
     time_info.tm_min = (time >> 5) & 0x03F;
-    time_info.tm_hour = time >> 11;
+    time_info.tm_hour = (time >> 11) + 1;
 
     time_t result = mktime(&time_info);
 
@@ -225,7 +227,7 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                                 skip_long_name = 1;
                                 continue;
                             }
-                            our_counter ++;
+                            our_counter++;
                             checksum = currentLong->csum;
                             long_name_counter = (currentLong->seq & 0x0F) - 1;
                             in_long_name = 1;
@@ -300,6 +302,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     st.st_mode |= S_IWUSR | S_IWGRP | S_IWOTH;
                 }
 
+                printf("File : %s has inode: %llu\n", fullname, st.st_ino);
+                fflush(stdout);
                 is_finished = callback(callbackdata, fullname, &st, 0);
                 free(fullname);
             }
@@ -315,7 +319,11 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 }
 
 int vfat_read(char *buf, size_t size, off_t offs, struct stat *st) {
-    off_t remaining_byte = st->st_size - offs;
+    if (offs >= st->st_size) {
+        return 0;
+    }
+
+    size_t remaining_byte = (size_t) st->st_size - offs;
     size = remaining_byte < size ? remaining_byte : size;
 
     size_t sector_no = offs / vfat_info.bytes_per_sector;
@@ -326,17 +334,14 @@ int vfat_read(char *buf, size_t size, off_t offs, struct stat *st) {
 
     for (int i = 0; i < cluster_no; ++i) {
         cluster_addr = vfat_next_cluster(cluster_addr);
-        if (cluster_addr < 0) {
-            return cluster_addr;
-        }
     }
 
     ssize_t total_byte_read = 0;
     int finished = 0;
-    while (cluster_addr != 0x0FFFFFFF && !finished) {
+    while (cluster_addr < 0x0FFFFFF8 && !finished) {
         off_t offset_in_cluster = offs % bytes_per_cluster;
         size_t remaining_byte_in_cluster = bytes_per_cluster - offset_in_cluster;
-        size_t byte_to_read = remaining_byte < remaining_byte_in_cluster ? remaining_byte : remaining_byte_in_cluster;
+        size_t byte_to_read = size < remaining_byte_in_cluster ? size : remaining_byte_in_cluster;
 
         size_t first_sector_of_cluster =
                 ((cluster_addr - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
@@ -345,18 +350,16 @@ int vfat_read(char *buf, size_t size, off_t offs, struct stat *st) {
         if (byte_read < 0) {
             return byte_read;
         }
+
         total_byte_read += byte_read;
         offs += byte_read;
+        size -= byte_read;
 
         finished = total_byte_read == size;
         if (byte_read == byte_to_read) {
             cluster_addr = vfat_next_cluster(cluster_addr);
-            if (cluster_addr < 0) {
-                return cluster_addr;
-            }
         }
     }
-
     return total_byte_read;
 }
 
@@ -390,13 +393,6 @@ int vfat_search_entry(void *data, const char *name, const struct stat *st, off_t
 */
 int vfat_resolve(const char *path, struct stat *st) {
 
-    /* TODO: Add your code here.
-        You should tokenize the path (by slash separator) and then
-        for each token search the directory for the file/dir with that name.
-        You may find it useful to use following functions:
-        - strtok to tokenize by slash. See manpage
-        - vfat_readdir in conjuction with vfat_search_entry
-    */
     int res = -ENOENT; // Not Found
     if (strcmp("/", path) == 0) {
         *st = vfat_info.root_inode;
@@ -430,6 +426,7 @@ int vfat_resolve(const char *path, struct stat *st) {
         token = strtok(NULL, "/");
     }
     *st = *sd.st;
+    printf("st.ino in resolve is %llu\n", st->st_ino);
     free(sd.st);
 
     return 0;
