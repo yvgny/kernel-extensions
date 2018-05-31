@@ -37,12 +37,14 @@ vfat_init(const char *dev) {
     vfat_info.fd = open(dev, O_RDONLY);
     if (vfat_info.fd < 0)
         err(1, "open(%s)", dev);
+    if (pread(vfat_info.fd, &s, sizeof(s), 0) != sizeof(s))
         err(1, "read super block");
 
     vfat_info.bytes_per_sector = s.bytes_per_sector;
     vfat_info.sectors_per_cluster = s.sectors_per_cluster;
     vfat_info.reserved_sectors = s.reserved_sectors;
     if (s.fat_count != 2) {
+        err(1, "fat_count should be 2 (see presentation)");
     }
     vfat_info.fat_count = s.fat_count;
     if (s.root_max_entries) {
@@ -138,6 +140,18 @@ int construct_name(struct fat32_direntry_long *direntry, char *buff) {
     return size;
 }
 
+uint8_t compute_checksum(const char nameext[11]) {
+    uint8_t sum = 0;
+
+    int i;
+    for (i = 0; i < 11; i++) {
+        // NOTE: The operation is an unsigned char rotate right
+        sum = ((sum & 1) ? 0x80 : 0) + (sum >> 1) + nameext[i];
+    }
+    return sum;
+}
+
+
 int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata) {
     struct stat st; // we can reuse same stat entry over and over again
     off_t err = 0;
@@ -150,6 +164,8 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
     char *fullname;
     int long_name_counter = 0;
     int in_long_name = 0;
+    int skip_long_name = 0;
+    uint8_t checksum;
     while (cluster_number != 0x0FFFFFFF && !is_finished) {
 
         first_sector_of_cluster = ((first_cluster - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
@@ -160,7 +176,6 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
             err = lseek(vfat_info.fd, sector_number * vfat_info.bytes_per_sector, SEEK_SET);
             if (err < 0) {
-
                 return -1;
             }
 
@@ -178,30 +193,34 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                     return 0;
                 } else if ((current.nameext[0] & 0xFF) == 0xE5) continue;
                 else if ((current.attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
-                    struct fat32_direntry_long *currentLong = &current;
-                    if (long_name_counter > 0) {
-                        if (currentLong->seq != long_name_counter--) {
-                                   long_name_counter);
-                            return -1;
+                    if (!skip_long_name) {
+                        struct fat32_direntry_long *currentLong = &current;
+                        if (long_name_counter > 0) {
+                            if (currentLong->seq != long_name_counter-- || currentLong->csum != checksum) {
+                                skip_long_name = 1;
+                                continue;
+                            }
+                            char first_entry_name[13];
+                            int first_entry_name_size = construct_name(currentLong, first_entry_name);
+                            strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
+                            continue;
+                        } else {
+                            if ((currentLong->seq & LAST_LONG_ENTRY) != LAST_LONG_ENTRY) {
+                                skip_long_name = 1;
+                                continue;
+                            }
+                            checksum = currentLong->csum;
+                            long_name_counter = (currentLong->seq & 0x0F) - 1;
+                            in_long_name = 1;
+                            char first_entry_name[13];
+                            int first_entry_name_size = construct_name(currentLong, first_entry_name);
+                            fullname = calloc(long_name_counter * 13 + first_entry_name_size, sizeof(char));
+                            strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
+                            continue;
                         }
-                        char first_entry_name[13];
-                        int first_entry_name_size = construct_name(currentLong, first_entry_name);
-                        strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
-                        continue;
-                    } else {
-                        if ((currentLong->seq & LAST_LONG_ENTRY) != LAST_LONG_ENTRY) {
-                            return -1;
-                        }
-                        long_name_counter = (currentLong->seq & 0x0F) - 1;
-                        in_long_name = 1;
-                        char first_entry_name[13];
-                        int first_entry_name_size = construct_name(currentLong, first_entry_name);
-                        fullname = calloc(long_name_counter * 13 + first_entry_name_size, sizeof(char));
-                        strncpy(fullname + long_name_counter * 13, first_entry_name, first_entry_name_size);
-                        continue;
                     }
                 } else if ((current.attr & ATTR_HIDDEN) == ATTR_HIDDEN) continue;
-                else if (!in_long_name){
+                else if (!in_long_name || compute_checksum(current.nameext) != checksum) {
                     // Name parsing
                     int finished = 0;
                     for (int i = 7; i >= 0 && !finished; i--) {
@@ -226,11 +245,14 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
 
                     strncpy(fullname, current.name, nameLen);
                     strncpy(&fullname[nameLen + 1], current.ext, extLen);
-                    fullname[nameLen] = '.';
+                    if ((current.attr & ATTR_DIRECTORY) != ATTR_DIRECTORY && extLen != 0) {
+                        fullname[nameLen] = '.';
+                    }
                     fullname[nameLen + extLen + 1] = '\0';
                 }
                 long_name_counter = 0;
                 in_long_name = 0;
+                skip_long_name = 0;
 
                 st.st_uid = vfat_info.mount_uid;
                 st.st_gid = vfat_info.mount_gid;
@@ -238,12 +260,24 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 st.st_rdev = 0;
                 st.st_blksize = 0; // Ignored by FUSE
                 st.st_blocks = 1;
+                st.
 
                 st.st_size = current.size;
                 st.st_ino = (((uint32_t) current.cluster_hi) << 16) | current.cluster_lo;
 
                 // Attribute parsing
-                st.st_mode = (current.attr & ATTR_DIRECTORY) == ATTR_DIRECTORY ? S_IFDIR : S_IFREG;
+                if ((current.attr & ATTR_DIRECTORY) == ATTR_DIRECTORY) {
+                    st.st_mode = S_IFDIR;
+                    st.st_mode |= S_IXUSR | S_IXGRP | S_IXOTH;
+                } else {
+                    st.st_mode = S_IFREG;
+
+                }
+                st.st_mode |= S_IRUSR | S_IRGRP | S_IROTH;
+
+                if ((current.attr & ATTR_READ_ONLY) != ATTR_READ_ONLY) {
+                    st.st_mode |= S_IWUSR | S_IWGRP | S_IWOTH;
+                }
 
                 is_finished = callback(callbackdata, fullname, &st, 0);
                 free(fullname);
@@ -255,7 +289,6 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
             return cluster_number;
         }
     }
-
 
     return 0;
 }
@@ -286,6 +319,7 @@ int vfat_read(char *buf, size_t size, off_t offs, struct stat *st) {
 
         size_t first_sector_of_cluster =
                 ((cluster_addr - 2) * vfat_info.sectors_per_cluster) + vfat_info.first_data_sector;
+        ssize_t byte_read = pread(vfat_info.fd, buf + total_byte_read, byte_to_read,
                                   first_sector_of_cluster * vfat_info.bytes_per_sector + offset_in_cluster);
         if (byte_read < 0) {
             return byte_read;
@@ -347,7 +381,6 @@ int vfat_resolve(const char *path, struct stat *st) {
         *st = vfat_info.root_inode;
         res = 0;
         return res;
-    } else {
     }
 
     size_t path_name_size = strlen(path);
