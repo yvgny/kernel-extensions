@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "vfat.h"
 #include "util.h"
@@ -151,6 +152,22 @@ uint8_t compute_checksum(const char nameext[11]) {
     return sum;
 }
 
+time_t create_time(uint16_t date, uint16_t time) {
+    struct tm time_info;
+
+    time_info.tm_mday = date & 0x01F;
+    time_info.tm_mon = ((date >> 5) & 0x0F) - 1;
+    time_info.tm_year = (date >> 9) + 1980 - 1900;
+
+    time_info.tm_sec = (time & 0x1F) * 2;
+    time_info.tm_min = (time >> 5) & 0x03F;
+    time_info.tm_hour = time >> 11;
+
+    time_t result = mktime(&time_info);
+
+    return result == -1 ? 0 : result;
+}
+
 
 int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbackdata) {
     struct stat st; // we can reuse same stat entry over and over again
@@ -260,10 +277,13 @@ int vfat_readdir(uint32_t first_cluster, fuse_fill_dir_t callback, void *callbac
                 st.st_rdev = 0;
                 st.st_blksize = 0; // Ignored by FUSE
                 st.st_blocks = 1;
-                st.
-
                 st.st_size = current.size;
+
                 st.st_ino = (((uint32_t) current.cluster_hi) << 16) | current.cluster_lo;
+
+                st.st_atime = create_time(current.atime_date, 0);
+                st.st_ctime = create_time(current.ctime_date, current.ctime_time);
+                st.st_mtime = create_time(current.mtime_date, current.mtime_time);
 
                 // Attribute parsing
                 if ((current.attr & ATTR_DIRECTORY) == ATTR_DIRECTORY) {
